@@ -287,6 +287,16 @@ MIT — build whatever you want. ⚡
 
 **If SkyWalker saved you time, please give it a ⭐ — it helps more people find it.**
 
-Made with 🤖 by the SkyWalker community
+---
+
+### Built by
+
+**Osasere Edobor**
+
+[🌐 Website](https://edoborosasere.com) · [💼 LinkedIn](https://www.linkedin.com/in/osasere-edobor) · [🐦 Twitter](https://twitter.com/sere_edobor) · [📸 Instagram](https://www.instagram.com/sere_edobor) · [📘 Facebook](https://www.facebook.com/edobor.osasere1) · [📧 projects@edoborosasere.com](mailto:projects@edoborosasere.com)
+
+Open to collabs, contributors, and ideas. Slide in. 🚀
+
+Made with 🤖 by Osasere Edobor
 
 </div>
