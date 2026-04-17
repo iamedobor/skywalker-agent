@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 10 10 15;
+    --foreground: 240 240 255;
+    --neon-cyan: 0 245 255;
+    --neon-blue: 77 159 255;
+    --neon-purple: 157 77 255;
+    --panel-bg: 17 17 24;
+    --panel-border: 30 30 46;
+  }
+
+  * {
+    @apply border-panel-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-void-950 text-slate-100 font-sans antialiased;
+    background-image:
+      radial-gradient(ellipse at 20% 20%, rgba(77, 159, 255, 0.05) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(157, 77, 255, 0.05) 0%, transparent 50%);
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-void-950;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-panel-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-600;
+  }
+
+  ::selection {
+    background: rgba(0, 245, 255, 0.2);
+    color: #fff;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-panel/80 backdrop-blur-sm border border-panel-border rounded-xl;
+  }
+
+  .neon-border {
+    box-shadow: 0 0 0 1px rgba(0, 245, 255, 0.2), 0 0 20px rgba(0, 245, 255, 0.1);
+  }
+
+  .neon-text {
+    @apply text-neon-cyan;
+    text-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(30, 30, 46, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 30, 46, 0.5) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .terminal-line {
+    @apply font-mono text-xs text-slate-400 leading-relaxed;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot.running {
+    @apply bg-neon-green animate-pulse;
+    box-shadow: 0 0 6px rgba(0, 255, 157, 0.8);
+  }
+
+  .status-dot.idle {
+    @apply bg-slate-600;
+  }
+
+  .status-dot.error {
+    @apply bg-neon-red;
+    box-shadow: 0 0 6px rgba(255, 77, 77, 0.8);
+  }
+
+  .status-dot.paused {
+    @apply bg-neon-yellow;
+    box-shadow: 0 0 6px rgba(255, 221, 77, 0.8);
+  }
+}
