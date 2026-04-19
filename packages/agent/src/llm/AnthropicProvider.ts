@@ -121,8 +121,8 @@ export class AnthropicProvider extends LLMProvider {
     // Remap action types the LLM commonly invents
     const typeMap: Record<string, () => Record<string, unknown>> = {
       clear: () => ({ type: "type", text: "", clearFirst: true, description: action.description ?? "Clear field" }),
-      triple_click: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Triple click" }),
-      double_click: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Double click" }),
+      triple_click: () => ({ type: "triple_click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Triple click to select all" }),
+      double_click: () => ({ type: "triple_click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Double click" }),
       focus: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Focus element" }),
       press: () => ({ type: "key_press", key: (action.key ?? action.value ?? "Enter") as string, description: action.description ?? "Press key" }),
       press_key: () => ({ type: "key_press", key: (action.key ?? "Enter") as string, description: action.description ?? "Press key" }),

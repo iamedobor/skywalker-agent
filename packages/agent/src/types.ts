@@ -106,6 +106,20 @@ export const BacktrackActionSchema = z.object({
   stepsBack: z.number().default(1),
 });
 
+export const ClickTextActionSchema = z.object({
+  type: z.literal("click_text"),
+  text: z.string(),
+  exact: z.boolean().default(false),
+  description: z.string(),
+});
+
+export const TripleClickActionSchema = z.object({
+  type: z.literal("triple_click"),
+  elementId: z.string().optional(),
+  coordinates: z.object({ x: z.number(), y: z.number() }).optional(),
+  description: z.string(),
+});
+
 export const KeyPressActionSchema = z.object({
   type: z.literal("key_press"),
   key: z.string(),
@@ -129,6 +143,8 @@ export const AgentActionSchema = z.discriminatedUnion("type", [
   ExtractActionSchema,
   CompleteActionSchema,
   BacktrackActionSchema,
+  ClickTextActionSchema,
+  TripleClickActionSchema,
   KeyPressActionSchema,
   RequireHumanActionSchema,
 ]);

@@ -47,9 +47,9 @@ export default function DashboardPage() {
   }, [state.status]);
 
   const handleGoal = useCallback(
-    async (goal: string) => {
+    async (goal: string, options?: { startUrl?: string }) => {
       setCommandOpen(false);
-      await run(goal);
+      await run(goal, options);
     },
     [run]
   );
@@ -296,13 +296,17 @@ export default function DashboardPage() {
               >
                 <div className="flex items-start gap-3">
                   <div className="w-2 h-2 rounded-full bg-neon-green mt-1.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs font-mono text-neon-green mb-1">
-                      TASK COMPLETE
-                    </p>
-                    <p className="text-sm text-slate-300 leading-relaxed">
+                  <div className="flex-1">
+                    <p className="text-xs font-mono text-neon-green mb-1">TASK COMPLETE</p>
+                    <p className="text-sm text-slate-300 leading-relaxed mb-3">
                       {state.finalResult}
                     </p>
+                    <FollowUpBar
+                      previousResult={state.finalResult}
+                      previousGoal={state.goal}
+                      lastUrl={state.currentUrl}
+                      onSubmit={handleGoal}
+                    />
                   </div>
                 </div>
               </motion.div>
@@ -333,6 +337,8 @@ export default function DashboardPage() {
               url={state.currentUrl}
               status={state.status}
               step={state.currentStep}
+              lastClickPos={state.lastClickPos}
+              lastActionType={state.lastActionType}
             />
           </div>
         </main>
@@ -363,6 +369,69 @@ export default function DashboardPage() {
         onApprove={(input) => approve(true, input)}
         onReject={() => approve(false)}
       />
+    </div>
+  );
+}
+
+function FollowUpBar({
+  previousResult,
+  previousGoal,
+  lastUrl,
+  onSubmit,
+}: {
+  previousResult: string;
+  previousGoal: string;
+  lastUrl?: string;
+  onSubmit: (goal: string, options?: { startUrl?: string }) => void;
+}) {
+  const [value, setValue] = useState("");
+
+  const suggestions = [
+    "Book the cheapest option",
+    "Find a faster alternative",
+    "Show me business class options",
+    "Try a different date",
+  ];
+
+  const submit = (text: string) => {
+    if (!text.trim()) return;
+    const contextualGoal = `Previous task: "${previousGoal}"\nPrevious result: "${previousResult}"\n\nFollow-up task: ${text}`;
+    // Resume from the same page so the agent doesn't re-search from scratch
+    const startUrl = lastUrl && lastUrl !== "about:blank" ? lastUrl : undefined;
+    onSubmit(contextualGoal, { startUrl });
+    setValue("");
+  };
+
+  return (
+    <div className="border-t border-panel-border pt-3">
+      <p className="text-xs font-mono text-slate-500 mb-2">Follow up:</p>
+      <div className="flex gap-2 mb-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit(value)}
+          placeholder='e.g. "Book the cheapest one" or "Find alternatives"'
+          className="flex-1 px-3 py-1.5 bg-void-950 border border-panel-border rounded-lg text-xs font-mono text-slate-300 placeholder:text-slate-600 outline-none focus:border-neon-cyan/40"
+        />
+        <button
+          onClick={() => submit(value)}
+          disabled={!value.trim()}
+          className="px-3 py-1.5 rounded-lg text-xs font-mono bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 disabled:opacity-30 transition-colors"
+        >
+          Go
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {suggestions.map((s) => (
+          <button
+            key={s}
+            onClick={() => submit(s)}
+            className="text-[10px] font-mono px-2 py-1 rounded border border-panel-border text-slate-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition-colors"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

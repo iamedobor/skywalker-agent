@@ -12,6 +12,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-15-white.svg?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](CONTRIBUTING.md)
 [![Stars](https://img.shields.io/github/stars/skywalker-agent/skywalker?style=flat-square&color=9d4dff)](https://github.com/skywalker-agent/skywalker/stargazers)
+[![CI](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml/badge.svg)](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml)
 
 <br/>
 
@@ -78,7 +79,7 @@ This is the **See-Think-Do** loop.
 git clone https://github.com/skywalker-agent/skywalker.git
 cd skywalker
 
-# 2. Install
+# 2. Install (Mac users: sudo npm install -g pnpm if you get a permissions error)
 pnpm install
 
 # 3. Configure
@@ -88,13 +89,20 @@ cp .env.example .env
 # 4. Install browser
 pnpm --filter @skywalker/agent exec playwright install chromium
 
-# 5. Launch
-pnpm dev
-# → Dashboard:     http://localhost:3000
-# → Agent Server:  http://localhost:3001
+# 5. Launch (two terminals)
+pnpm --filter @skywalker/agent dev   # Agent server  → http://localhost:3001
+pnpm --filter @skywalker/web dev     # Dashboard     → http://localhost:3000
 ```
 
-> **Pro Tip:** Set `BROWSER_HEADLESS=false` in `.env` to watch SkyWalker work in real time. It's mesmerizing.
+> **Watch mode:** Set `BROWSER_HEADLESS=false` in `.env` to watch SkyWalker work in real time. It's mesmerizing.
+
+> **Speed Tip:** SkyWalker supports two modes. Set `LLM_MODEL` in your `.env` to match your task:
+
+| Model | Speed | Best for |
+|---|---|---|
+| `claude-haiku-4-5-20251001` | ⚡ Fast (~30s) | Price lookups, research, simple reads |
+| `claude-sonnet-4-6` *(default)* | 🧠 Thorough (~2min) | Booking flows, form filling, complex tasks |
+| `gpt-4o` | ⚡ Fast | OpenAI alternative |
 
 ---
 
@@ -248,21 +256,19 @@ These are the community skills we'd love to see built. Each is a great **good fi
 
 ## 🤝 Contributing
 
-SkyWalker is built by developers, for developers. The easiest way to contribute is to **build a Skill**.
+SkyWalker is built by developers, for developers. Read the full guide in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The quickest contribution is building a **Skill** — one file, no internals knowledge needed:
 
 ```bash
-# 1. Fork the repo
-# 2. Create your skill
-cp packages/agent/src/skills/examples/FlightSearchSkill.ts \
-   skills/MyAwesomeSkill.ts
-
-# 3. Edit it, test it
-pnpm dev
-
-# 4. Open a PR 🚀
+# 1. Fork + clone
+# 2. Copy the template
+cp packages/agent/src/skills/examples/ResearchSkill.ts skills/MyAwesomeSkill.ts
+# 3. Edit it, run pnpm dev, test it
+# 4. Open a PR
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+Also see: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [SECURITY.md](SECURITY.md)
 
 ---
 

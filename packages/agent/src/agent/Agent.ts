@@ -132,6 +132,9 @@ export class Agent extends EventEmitter {
     const previousThoughts: string[] = [];
     let consecutiveErrors = 0;
     let lastError: string | undefined;
+    let lastUrl = "";
+    let staleStepCount = 0;
+    let consentAttempts = 0;
 
     for (let step = 1; step <= this.config.maxSteps; step++) {
       if (this.abortController?.signal.aborted) {
@@ -147,6 +150,53 @@ export class Agent extends EventEmitter {
       context.currentUrl = url;
       context.currentScreenshot = screenshotB64;
       context.currentAccessibilityTree = a11yTree;
+
+      // ── Auto-dismiss consent/cookie pages without consuming a real step ──────
+      // Only match by URL — aria tree check was too broad and triggered on Google Flights itself
+      if (url.includes("consent.google.com") || url.includes("google.com/sorry")) {
+        consentAttempts++;
+        logger.info(`[Auto] Consent page detected — attempt ${consentAttempts}`);
+
+        if (consentAttempts <= 4) {
+          // Use JS evaluation to click button by inner text — works regardless of Shadow DOM or locale
+          await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll("button, [role='button']")) as HTMLElement[];
+            const target =
+              btns.find(b => /reject|ablehnen|refuser|decline/i.test(b.innerText)) ??
+              btns.find(b => /accept|accepter|akzeptieren|agree/i.test(b.innerText)) ??
+              btns[0];
+            target?.click();
+          }).catch(() => {});
+          await page.waitForTimeout(2000);
+        } else {
+          // Tried 4 times — force navigate past consent using the continue param
+          const continueUrl = new URL(url).searchParams.get("continue") ?? "";
+          if (continueUrl) {
+            logger.warn(`[Auto] Consent not dismissing — force-navigating to: ${continueUrl}`);
+            await page.goto(continueUrl, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+            await page.waitForTimeout(1500);
+          }
+          consentAttempts = 0;
+        }
+
+        step--; // consent handling is NOT a real step — don't consume the step budget
+        continue;
+      }
+
+      // Reset consent counter once we leave the consent page
+      consentAttempts = 0;
+
+      // Detect stale loop: same URL + empty tree for 4+ steps → force backtrack
+      if (url === lastUrl && a11yTree.filter(n => n.role !== "document").length < 3) {
+        staleStepCount++;
+        if (staleStepCount >= 4) {
+          staleStepCount = 0;
+          lastError = "Stuck on this page for multiple steps with no interactive elements found. Try click_text, navigate to a different site, or use extract to read the page content.";
+        }
+      } else {
+        staleStepCount = 0;
+        lastUrl = url;
+      }
 
       this.emit_event("agent:screenshot", sessionId, {
         screenshot: screenshotB64,

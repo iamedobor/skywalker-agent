@@ -36,6 +36,8 @@ export interface AgentState {
   pendingApproval: PendingApproval | null;
   finalResult: string | null;
   error: string | null;
+  lastClickPos: { x: number; y: number } | null;
+  lastActionType: string | null;
 }
 
 export interface PendingApproval {
@@ -50,6 +52,7 @@ type AgentAction =
   | { type: "START"; goal: string; sessionId: string }
   | { type: "SCREENSHOT"; screenshot: string; url: string; step: number }
   | { type: "THOUGHT"; entry: ThinkingLogEntry }
+  | { type: "ACTION_CLICK"; x: number; y: number; actionType: string }
   | { type: "COMPLETE"; result: string }
   | { type: "ERROR"; error: string }
   | { type: "BACKTRACK"; step: number; reason: string }
@@ -69,6 +72,8 @@ const initialState: AgentState = {
   pendingApproval: null,
   finalResult: null,
   error: null,
+  lastClickPos: null,
+  lastActionType: null,
 };
 
 function agentReducer(state: AgentState, action: AgentAction): AgentState {
@@ -87,6 +92,13 @@ function agentReducer(state: AgentState, action: AgentAction): AgentState {
         currentScreenshot: action.screenshot,
         currentUrl: action.url,
         currentStep: action.step,
+      };
+
+    case "ACTION_CLICK":
+      return {
+        ...state,
+        lastClickPos: { x: action.x, y: action.y },
+        lastActionType: action.actionType,
       };
 
     case "THOUGHT":
@@ -173,13 +185,31 @@ export function useAgent() {
       });
     };
 
+    const handleAction = (event: {
+      sessionId: string;
+      data: {
+        step?: number;
+        action?: {
+          type: string;
+          coordinates?: { x: number; y: number };
+          clickX?: number; clickY?: number;
+        };
+      };
+    }) => {
+      if (event.sessionId !== currentSessionRef.current) return;
+      const coords = event.data.action?.coordinates;
+      if (coords) {
+        dispatch({ type: "ACTION_CLICK", x: coords.x, y: coords.y, actionType: event.data.action?.type ?? "click" });
+      }
+    };
+
     const handleThought = (event: {
       sessionId: string;
       data: {
         step?: number;
         thought?: string;
         observation?: string;
-        action?: { type: string; description?: string };
+        action?: { type: string; description?: string; coordinates?: { x: number; y: number } };
         confidence?: number;
         status?: string;
       };
@@ -234,11 +264,13 @@ export function useAgent() {
       data: { result: string };
     }) => {
       if (event.sessionId !== currentSessionRef.current) return;
+      currentSessionRef.current = null; // allow follow-up runs
       dispatch({ type: "COMPLETE", result: event.data.result });
     };
 
     const handleError = (event: { sessionId: string; data: { error: string } }) => {
       if (event.sessionId !== currentSessionRef.current) return;
+      currentSessionRef.current = null; // allow retry
       dispatch({ type: "ERROR", error: event.data.error });
     };
 
@@ -284,6 +316,7 @@ export function useAgent() {
 
     socket.on("agent:start", handleStart);
     socket.on("agent:screenshot", handleScreenshot);
+    socket.on("agent:action", handleAction);
     socket.on("agent:thought", handleThought);
     socket.on("agent:complete", handleComplete);
     socket.on("agent:error", handleError);
@@ -294,6 +327,7 @@ export function useAgent() {
     return () => {
       socket.off("agent:start", handleStart);
       socket.off("agent:screenshot", handleScreenshot);
+      socket.off("agent:action", handleAction);
       socket.off("agent:thought", handleThought);
       socket.off("agent:complete", handleComplete);
       socket.off("agent:error", handleError);
@@ -338,6 +372,7 @@ export function useAgent() {
   );
 
   const reset = useCallback(() => {
+    currentSessionRef.current = null;
     dispatch({ type: "RESET" });
   }, []);
 

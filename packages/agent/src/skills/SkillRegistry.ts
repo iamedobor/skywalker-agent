@@ -5,6 +5,8 @@ import { glob } from "glob";
 import type { BaseSkill } from "./BaseSkill.js";
 import { logger } from "../utils/logger.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — import.meta works at runtime via tsx/ESM despite CJS tsconfig
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export class SkillRegistry {

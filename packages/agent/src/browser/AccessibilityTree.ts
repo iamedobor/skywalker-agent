@@ -2,9 +2,65 @@ import type { Page } from "playwright";
 import type { AccessibilityNode } from "../types.js";
 import { v4 as uuidv4 } from "uuid";
 
+/**
+ * Capture accessibility tree using Playwright's ariaSnapshot (primary)
+ * which correctly pierces Shadow DOM used by Google Flights, LinkedIn, etc.
+ * Falls back to DOM evaluation for sites where ariaSnapshot is unavailable.
+ */
 export async function captureAccessibilityTree(
   page: Page
 ): Promise<AccessibilityNode[]> {
+  // Primary: Playwright's internal aria snapshot — pierces Shadow DOM
+  try {
+    const yaml = await page.locator("body").ariaSnapshot({ timeout: 4000 });
+    const nodes = parseAriaYaml(yaml);
+    if (nodes.length >= 3) {
+      const nodesWithIds = nodes.slice(0, 100).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
+      // Inject data-sw-id into DOM so click-by-elementId works on non-Shadow DOM sites
+      try {
+        await page.evaluate((nodeData: Array<{id: string; role: string; name: string}>) => {
+          const roleToSelector: Record<string, string> = {
+            button: 'button, [role="button"]',
+            link: 'a[href], [role="link"]',
+            textbox: 'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, [role="textbox"]',
+            combobox: 'select, [role="combobox"]',
+            checkbox: 'input[type=checkbox], [role="checkbox"]',
+            radio: 'input[type=radio], [role="radio"]',
+            tab: '[role="tab"]',
+            menuitem: '[role="menuitem"]',
+            searchbox: 'input[type=search], [role="searchbox"]',
+          };
+          for (const { id, role, name } of nodeData) {
+            if (!name) continue;
+            const sel = roleToSelector[role] ?? `[role="${role}"]`;
+            const els = Array.from(document.querySelectorAll(sel)) as HTMLElement[];
+            for (const el of els) {
+              if (el.getAttribute("data-sw-id")) continue;
+              const elText = (
+                el.getAttribute("aria-label") ??
+                el.getAttribute("placeholder") ??
+                el.textContent ??
+                ""
+              ).trim().slice(0, 80);
+              const nameLower = name.toLowerCase();
+              const elLower = elText.toLowerCase();
+              if (elLower === nameLower || elLower.includes(nameLower) || nameLower.includes(elLower)) {
+                el.setAttribute("data-sw-id", id);
+                break;
+              }
+            }
+          }
+        }, nodesWithIds.map((n) => ({ id: n.id, role: n.role, name: n.name })));
+      } catch {
+        // Shadow DOM sites can't be injected — click_text will handle them
+      }
+      return nodesWithIds;
+    }
+  } catch {
+    // fall through to DOM fallback
+  }
+
+  // Fallback: DOM evaluation for simpler sites
   try {
     const nodes = await page.evaluate(() => {
       const results: Array<{
@@ -13,101 +69,36 @@ export async function captureAccessibilityTree(
         value?: string;
         placeholder?: string;
         disabled?: boolean;
-        checked?: boolean;
-        tag?: string;
       }> = [];
 
-      function getRole(el: Element): string {
-        const role = el.getAttribute("role");
-        if (role && role !== "none" && role !== "presentation") return role;
-        const tag = el.tagName.toLowerCase();
-        const type = (el as HTMLInputElement).type?.toLowerCase();
-        if (tag === "input" && type === "checkbox") return "checkbox";
-        if (tag === "input" && type === "radio") return "radio";
-        if (tag === "input" && (type === "submit" || type === "button")) return "button";
-        const tagMap: Record<string, string> = {
-          a: "link", button: "button", input: "textbox",
-          select: "combobox", textarea: "textbox",
-          h1: "heading", h2: "heading", h3: "heading",
-          img: "img", form: "form", nav: "navigation",
-        };
-        return tagMap[tag] ?? tag;
-      }
-
-      function getLabel(el: Element): string {
-        // aria-label / aria-labelledby
-        const ariaLabel = el.getAttribute("aria-label");
-        if (ariaLabel?.trim()) return ariaLabel.trim();
-
-        const labelledBy = el.getAttribute("aria-labelledby");
-        if (labelledBy) {
-          const labelEl = document.getElementById(labelledBy);
-          if (labelEl?.textContent?.trim()) return labelEl.textContent.trim().slice(0, 80);
-        }
-
-        // <label for="id">
-        const id = el.getAttribute("id");
-        if (id) {
-          const label = document.querySelector(`label[for="${id}"]`);
-          if (label?.textContent?.trim()) return label.textContent.trim().slice(0, 80);
-        }
-
-        // placeholder / title / alt
-        const placeholder = el.getAttribute("placeholder");
-        if (placeholder) return placeholder;
-        const title = el.getAttribute("title");
-        if (title) return title;
-        const alt = el.getAttribute("alt");
-        if (alt) return alt;
-
-        // innerText (buttons, links, headings)
-        const text = (el as HTMLElement).innerText?.trim().replace(/\s+/g, " ").slice(0, 80);
-        if (text) return text;
-
-        return "";
-      }
-
       const SELECTORS = [
-        "a[href]",
-        "button:not([disabled])",
-        "input:not([type=hidden])",
-        "select",
-        "textarea",
-        "[role=button]",
-        "[role=link]",
-        "[role=textbox]",
-        "[role=combobox]",
-        "[role=option]",
-        "[role=menuitem]",
-        "[role=tab]",
-        "[role=checkbox]",
-        "[role=radio]",
-        "[role=listitem]",
+        "a[href]", "button", "input:not([type=hidden])", "select", "textarea",
+        "[role=button]", "[role=link]", "[role=textbox]", "[role=combobox]",
+        "[role=option]", "[role=menuitem]", "[role=tab]", "[aria-haspopup]",
         "h1", "h2", "h3",
-        // Google-specific selectors
-        "[data-ved]",
-        "[jsname]",
-        "[jsaction]",
-        "[aria-haspopup]",
-        "[aria-expanded]",
-        "[aria-selected]",
-      ];
+      ].join(",");
 
       const seen = new Set<Element>();
-      const allEls = document.querySelectorAll(SELECTORS.join(","));
-
-      allEls.forEach((el) => {
+      document.querySelectorAll(SELECTORS).forEach((el) => {
         if (seen.has(el)) return;
         seen.add(el);
 
-        const role = getRole(el);
-        const name = getLabel(el);
-
-        // Skip completely invisible elements
         const style = window.getComputedStyle(el);
         if (style.display === "none" || style.visibility === "hidden") return;
 
-        // Skip elements with no useful information
+        const role =
+          el.getAttribute("role") ??
+          ({ a: "link", button: "button", input: "textbox", select: "combobox", textarea: "textbox", h1: "heading", h2: "heading", h3: "heading" } as Record<string, string>)[el.tagName.toLowerCase()] ??
+          el.tagName.toLowerCase();
+
+        const name =
+          el.getAttribute("aria-label") ??
+          el.getAttribute("title") ??
+          el.getAttribute("alt") ??
+          el.getAttribute("placeholder") ??
+          (el as HTMLElement).innerText?.trim().slice(0, 80) ??
+          "";
+
         if (!name && role === el.tagName.toLowerCase()) return;
 
         results.push({
@@ -116,61 +107,80 @@ export async function captureAccessibilityTree(
           value: (el as HTMLInputElement).value || undefined,
           placeholder: el.getAttribute("placeholder") || undefined,
           disabled: (el as HTMLButtonElement).disabled || false,
-          checked: (el as HTMLInputElement).type === "checkbox"
-            ? (el as HTMLInputElement).checked
-            : undefined,
-          tag: el.tagName.toLowerCase(),
         });
       });
 
       return results.slice(0, 100);
     });
 
-    // If DOM scrape found nothing useful, try Playwright's aria snapshot
-    if (nodes.filter(n => n.role !== "heading").length < 3) {
-      try {
-        const snapshot = await page.locator("body").ariaSnapshot({ timeout: 3000 });
-        const snapshotNodes = parseAriaSnapshot(snapshot);
-        if (snapshotNodes.length > nodes.length) {
-          return snapshotNodes.slice(0, 80).map(n => ({ ...n, id: uuidv4().slice(0, 8) }));
-        }
-      } catch {
-        // ariaSnapshot not available or timed out — use DOM results
-      }
+    if (nodes.length > 0) {
+      return nodes.map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
     }
-
-    return nodes.map((n) => ({
-      ...n,
-      id: uuidv4().slice(0, 8),
-    }));
   } catch {
-    return [];
+    // fall through to text extraction
   }
+
+  // Last resort: extract visible page text so LLM isn't completely blind
+  try {
+    const text = await page.evaluate(() =>
+      document.body?.innerText?.replace(/\s+/g, " ").trim().slice(0, 4000) ?? ""
+    );
+    if (text) {
+      return [{
+        id: uuidv4().slice(0, 8),
+        role: "document",
+        name: `VISIBLE PAGE TEXT: ${text}`,
+      }];
+    }
+  } catch {
+    // ignore
+  }
+
+  return [];
 }
 
-function parseAriaSnapshot(snapshot: string): Omit<AccessibilityNode, "id">[] {
+/**
+ * Parse Playwright's YAML aria snapshot into AccessibilityNode list.
+ * Format example:
+ *   - button "Accept all"
+ *   - textbox "Search" [focused]
+ *   - link "Home" [url="https://..."]
+ */
+function parseAriaYaml(yaml: string): Omit<AccessibilityNode, "id">[] {
   const nodes: Omit<AccessibilityNode, "id">[] = [];
-  const lines = snapshot.split("\n");
-  for (const line of lines) {
-    const match = line.match(/^\s*-\s+(\w+)\s+"?([^"]*)"?/);
-    if (match) {
-      const [, role, name] = match;
-      if (role && name && role !== "generic" && role !== "none") {
-        nodes.push({ role, name: name.trim() });
-      }
-    }
+
+  for (const line of yaml.split("\n")) {
+    // Match: optional indent, dash, role, optional quoted name
+    const match = line.match(/^\s*-\s+(\w[\w-]*)\s*(?:"([^"]*)")?(.*)$/);
+    if (!match) continue;
+
+    const [, role, name = ""] = match;
+    if (!role || role === "generic" || role === "none") continue;
+
+    // Skip pure container roles with no name
+    if (!name && ["group", "region", "main", "navigation", "list"].includes(role)) continue;
+
+    const extra = match[3] ?? "";
+    const disabled = extra.includes("[disabled]");
+    const checked = extra.includes("[checked]")
+      ? true
+      : extra.includes("[unchecked]")
+        ? false
+        : undefined;
+
+    nodes.push({ role, name, disabled, checked });
   }
+
   return nodes;
 }
 
 export function serializeTreeToPrompt(nodes: AccessibilityNode[]): string {
-  if (nodes.length === 0) return "(no interactive elements found)";
+  if (nodes.length === 0) return "(no elements found)";
   const lines = ["Interactive elements on this page:"];
   for (const node of nodes) {
     let line = `[${node.id}] <${node.role}>`;
     if (node.name) line += ` "${node.name}"`;
     if (node.value) line += ` value="${node.value}"`;
-    if (node.placeholder) line += ` placeholder="${node.placeholder}"`;
     if (node.checked !== undefined) line += ` checked=${node.checked}`;
     if (node.disabled) line += ` (disabled)`;
     lines.push(line);

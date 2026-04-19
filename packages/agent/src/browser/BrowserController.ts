@@ -80,22 +80,60 @@ export class BrowserController {
           if (action.coordinates) {
             await page.mouse.click(action.coordinates.x, action.coordinates.y);
           } else if (action.elementId) {
-            await page
+            const clicked = await page
               .locator(`[data-sw-id="${action.elementId}"]`)
               .first()
-              .click()
-              .catch(() => page.keyboard.press("Tab"));
+              .click({ timeout: 3000 })
+              .then(() => true)
+              .catch(() => false);
+
+            if (!clicked) {
+              // data-sw-id not in DOM — try role+name using element name from description
+              // Descriptions like: "Click 'Where from?' combobox" or "Click the Search button"
+              const nameMatch =
+                action.description.match(/["']([^"']{2,60})["']/) ??
+                action.description.match(/click\s+(?:the\s+|on\s+)?([A-Za-z][^\s,.?]{1,40}(?:\s[^\s,.?]{1,20})?)\s*(?:button|link|tab|combobox|field|input)?/i);
+              const elName = nameMatch?.[1]?.trim();
+              if (elName) {
+                const fallback =
+                  await page.getByRole("combobox", { name: elName, exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+                  await page.getByRole("button", { name: elName, exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+                  await page.getByLabel(elName, { exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+                  await page.getByText(elName, { exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false);
+                void fallback;
+              }
+            }
           }
           await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
           break;
         }
 
         case "type": {
-          if (action.clearFirst) {
-            await page.keyboard.press("Control+A");
-            await page.keyboard.press("Delete");
+          // Only click by elementId if it actually exists in the DOM.
+          // Attempting to click a non-existent data-sw-id steals focus from
+          // already-focused Shadow DOM inputs (e.g. Google Flights comboboxes).
+          if (action.elementId) {
+            const exists = await page.locator(`[data-sw-id="${action.elementId}"]`).count().catch(() => 0);
+            if (exists > 0) {
+              await page.locator(`[data-sw-id="${action.elementId}"]`).first()
+                .click({ timeout: 3000 }).catch(() => {});
+              await page.waitForTimeout(300);
+            }
+            // If not found in DOM, the field is likely already focused from the previous action — proceed directly
           }
-          await page.keyboard.type(action.text, { delay: 30 });
+
+          if (action.clearFirst) {
+            // Use keyboard select-all + delete so sites like Google Flights still receive
+            // proper input events (fill() bypasses them and breaks autocomplete)
+            await page.keyboard.press("Control+A");
+            await page.waitForTimeout(50);
+            await page.keyboard.press("Backspace");
+            await page.waitForTimeout(100);
+          }
+
+          // Slow typing (60ms/char) gives autocomplete dropdowns time to appear
+          await page.keyboard.type(action.text, { delay: 60 });
+          await page.waitForTimeout(600); // let dropdown load after typing
           break;
         }
 
@@ -138,6 +176,45 @@ export class BrowserController {
           break;
         }
 
+        case "click_text": {
+          const t = action.text;
+          const exact = action.exact ?? false;
+          // Try role-based locators first (pierce Shadow DOM, match by accessible name)
+          // "option" covers autocomplete dropdown items (Google Flights, etc.)
+          const clicked =
+            await page.getByRole("option",   { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByRole("button",   { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByRole("combobox", { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByRole("link",     { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByRole("tab",      { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByRole("menuitem", { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByLabel(t, { exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
+            await page.getByText(t, { exact }).first().click({ timeout: 4000 }).then(() => true).catch(() => false) ||
+            await page.locator(`text=${t}`).first().click({ timeout: 2000 }).then(() => true).catch(() => false);
+          void clicked;
+          await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+          break;
+        }
+
+        case "triple_click": {
+          if (action.coordinates) {
+            await page.mouse.click(action.coordinates.x, action.coordinates.y, { clickCount: 3 });
+          } else if (action.elementId) {
+            const el = page.locator(`[data-sw-id="${action.elementId}"]`).first();
+            await el.click({ clickCount: 3 }).catch(async () => {
+              // data-sw-id not in DOM — select-all on the currently focused element
+              await page.keyboard.press("Meta+A").catch(() => {});
+              await page.keyboard.press("Control+A").catch(() => {});
+            });
+          } else {
+            // No target — select all text in whatever is focused
+            await page.keyboard.press("Meta+A").catch(() => {});
+            await page.keyboard.press("Control+A").catch(() => {});
+          }
+          await page.waitForTimeout(100);
+          break;
+        }
+
         case "key_press": {
           const KEY_MAP: Record<string, string> = {
             ctrl: "Control", cmd: "Meta", alt: "Alt", shift: "Shift",
@@ -158,7 +235,7 @@ export class BrowserController {
         case "extract": {
           const content = await page.evaluate((sel) => {
             const el = sel ? document.querySelector(sel) : document.body;
-            return el?.innerText ?? "";
+            return (el as HTMLElement)?.innerText ?? "";
           }, action.selector ?? null);
           return { success: true, extractedData: content };
         }
