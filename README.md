@@ -11,8 +11,8 @@
 [![Playwright](https://img.shields.io/badge/Playwright-1.47-green.svg?style=flat-square&logo=playwright)](https://playwright.dev/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-white.svg?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](CONTRIBUTING.md)
-[![Stars](https://img.shields.io/github/stars/skywalker-agent/skywalker?style=flat-square&color=9d4dff)](https://github.com/skywalker-agent/skywalker/stargazers)
-[![CI](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml/badge.svg)](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/iamedobor/skywalker-agent?style=flat-square&color=9d4dff)](https://github.com/iamedobor/skywalker-agent/stargazers)
+[![CI](https://github.com/iamedobor/skywalker-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/iamedobor/skywalker-agent/actions/workflows/ci.yml)
 
 <br/>
 
@@ -76,7 +76,7 @@ This is the **See-Think-Do** loop.
 
 ```bash
 # 1. Clone
-git clone https://github.com/skywalker-agent/skywalker.git
+git clone https://github.com/iamedobor/skywalker-agent.git
 cd skywalker
 
 # 2. Install (Mac users: sudo npm install -g pnpm if you get a permissions error)
@@ -250,7 +250,7 @@ These are the community skills we'd love to see built. Each is a great **good fi
 | 🛒 `amazon-checkout` | Hard | Purchase with PaymentGate safety |
 | 📧 `email-triage` | Medium | Categorize and draft replies to emails |
 
-**→ [See all open issues](https://github.com/skywalker-agent/skywalker/issues?q=label%3A%22good+first+issue%22)**
+**→ [See all open issues](https://github.com/iamedobor/skywalker-agent/issues?q=label%3A%22good+first+issue%22)**
 
 ---
 
