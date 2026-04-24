@@ -11,8 +11,8 @@
 [![Playwright](https://img.shields.io/badge/Playwright-1.47-green.svg?style=flat-square&logo=playwright)](https://playwright.dev/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-white.svg?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](CONTRIBUTING.md)
-[![Stars](https://img.shields.io/github/stars/skywalker-agent/skywalker?style=flat-square&color=9d4dff)](https://github.com/skywalker-agent/skywalker/stargazers)
-[![CI](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml/badge.svg)](https://github.com/skywalker-agent/skywalker/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/iamedobor/skywalker-agent?style=flat-square&color=9d4dff)](https://github.com/iamedobor/skywalker-agent/stargazers)
+[![CI](https://github.com/iamedobor/skywalker-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/iamedobor/skywalker-agent/actions/workflows/ci.yml)
 
 <br/>
 
@@ -22,9 +22,9 @@
 <br/>
 
 ```
-"Find the cheapest flight from NYC to London next Friday"
-     ↓  SkyWalker opens Chrome, searches, reasons, clicks
-"✅  Found: British Airways · $412 · 7h 05m · Departing 09:15"
+Click "flight-search"  →  NYC → London, depart 2026-05-01
+     ↓  SkyWalker opens Chrome, lands on a pre-filled results page, reads the screen
+"✅  Cheapest: British Airways · $412 · 7h 05m · Departing 09:15"
 ```
 
 </div>
@@ -33,13 +33,14 @@
 
 ## Why SkyWalker?
 
-Traditional scrapers break the moment a website changes one CSS class.
+Traditional scrapers break the moment a website changes one CSS class. Pure-vision agents burn 75 steps fighting date pickers.
 
-**SkyWalker doesn't read the DOM. It reads the screen.**
+**SkyWalker does both — and knows when to cheat.**
 
-Like a human, SkyWalker *sees* the current state of the browser, *thinks* about the best next action using a multimodal LLM, and *does* it — click, type, scroll, or ask you for help. If it goes down the wrong path, it backtracks. If it hits a payment screen, it stops and asks you first.
+- For unknown sites, it runs a **See-Think-Do** vision loop: screenshot → multimodal LLM → action. It backtracks when wrong, and pauses at payment screens.
+- For known sites, it ships **Skills** — tiny TypeScript plugins that build a deep-link URL with the query pre-filled so the agent lands on a results page and only has to *read*. No date-picker wars. No autocomplete battles.
 
-This is the **See-Think-Do** loop.
+Every skill lives in one file. Drop it in `/skills/` — it shows up as a form in the dashboard instantly.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -57,42 +58,47 @@ This is the **See-Think-Do** loop.
 
 ---
 
+## What Works Today
+
+SkyWalker ships with three battle-tested skills that work reliably on a cold install:
+
+| Skill | What it does | Why it's bulletproof |
+|---|---|---|
+| ✈️ **`flight-search`** | Finds the cheapest flight between two cities on a date | Deep-links into Google Flights' `?q=` natural-language endpoint — skips the date picker entirely |
+| 🔍 **`research`** | Deep-dives any topic across 1–5 sources | Lands on a Google search URL and reads — where vision LLMs are strongest |
+| 💼 **`linkedin`** | Search profiles, extract leads, or send connection requests (with approval) | Uses LinkedIn's `/search/results/` URL shape; connection sends gate through `require_human` |
+
+Type a free-form goal in the command bar if you want raw vision-loop mode.
+
+---
+
 ## ✨ Features
 
 | Feature | Description |
 |---|---|
-| **👁️ Vision-First Reasoning** | Uses screenshots + accessibility trees — no brittle CSS selectors |
-| **🔄 Self-Healing Loops** | Detects mistakes from new screenshots and backtracks automatically |
+| **🧩 Skill Plugins** | One file, `plan(params) → { goal, startUrl }`. Drop in `/skills/` — appears in the dashboard with an auto-generated params form |
+| **👁️ Vision-First Reasoning** | Screenshots + accessibility trees — no brittle CSS selectors |
+| **🔄 Self-Healing Loops** | Detects repeat-action loops via action fingerprinting and injects a corrective hint |
 | **🛡️ Human-in-the-Loop Payments** | Pauses at payment screens and asks for your approval before proceeding |
-| **🎬 Action Traces** | Every step saved as a `.trace.json` — replay automations without re-calling the LLM |
-| **🧩 Plugin Skills** | Drop a file in `/skills` — it auto-loads into the dashboard |
+| **🎬 Action Traces** | Every step saved as a `.trace.json` — replay without re-calling the LLM |
 | **⚡ Real-Time Dashboard** | Cyberpunk UI with live browser preview + terminal-style thinking log |
 | **🔀 Multi-Provider LLM** | Switch between Claude (Anthropic) and GPT-4o (OpenAI) via one env var |
-| **🔐 Session Sharing** | Use your existing Chrome profile — agent inherits your logins |
+| **🔐 Session Sharing** | Point at your existing Chrome profile — agent inherits your logins |
+| **🖥️ Cross-Platform Input** | Uses Playwright's `ControlOrMeta` modifier so `select-all` works on macOS, Windows, and Linux |
 
 ---
 
 ## 1-Minute Install
 
 ```bash
-# 1. Clone
-git clone https://github.com/skywalker-agent/skywalker.git
-cd skywalker
-
-# 2. Install (Mac users: sudo npm install -g pnpm if you get a permissions error)
-pnpm install
-
-# 3. Configure
-cp .env.example .env
-# → Open .env and add your ANTHROPIC_API_KEY (or OPENAI_API_KEY)
-
-# 4. Install browser
-pnpm --filter @skywalker/agent exec playwright install chromium
-
-# 5. Launch (two terminals)
-pnpm --filter @skywalker/agent dev   # Agent server  → http://localhost:3001
-pnpm --filter @skywalker/web dev     # Dashboard     → http://localhost:3000
+git clone https://github.com/iamedobor/skywalker-agent.git
+cd skywalker-agent
+./scripts/setup.sh
 ```
+
+The setup script handles everything: checks Node.js, installs pnpm if needed, installs dependencies, installs the Playwright browser, prompts you for your API key, writes your `.env`, and launches both services.
+
+When it's done, open **http://localhost:3000**.
 
 > **Watch mode:** Set `BROWSER_HEADLESS=false` in `.env` to watch SkyWalker work in real time. It's mesmerizing.
 
@@ -152,44 +158,61 @@ When SkyWalker detects words like "Pay Now", "Confirm Purchase", or CVV fields, 
 
 ## 🧩 The Skill System
 
-Skills are **Lego bricks** for SkyWalker. Each skill configures a specific goal and can have custom params rendered as a form in the dashboard.
+Skills are **Lego bricks** for SkyWalker. Each skill returns a `SkillPlan` — a goal string plus an optional deep-link URL — and gets a params form auto-rendered from its JSON Schema.
 
-### Build Your Own Skill
+### The `plan()` pattern
 
 ```typescript
-// skills/PizzaDeliverySkill.ts
-import { BaseSkill } from "@skywalker/agent";
+// skills/HotelSearchSkill.ts
+import { BaseSkill, type SkillPlan } from "@skywalker/agent/src/skills/BaseSkill.js";
 
-export class PizzaDeliverySkill extends BaseSkill {
-  metadata = {
-    name: "pizza-delivery",
-    description: "Order pizza from your favorite place",
+export class HotelSearchSkill extends BaseSkill {
+  readonly metadata = {
+    name: "hotel-search",
+    description: "Find hotel deals on Booking.com",
     version: "1.0.0",
-    icon: "🍕",
-    category: "food",
-    triggers: ["order pizza", "get pizza"],
+    author: "Your Name",
+    icon: "🏨",
+    category: "travel",
+    triggers: ["find hotel", "book hotel", "hotel deals"],
   };
 
-  paramsSchema() {
+  paramsSchema(): Record<string, unknown> {
     return {
       type: "object",
       properties: {
-        restaurant: { type: "string" },
-        items: { type: "array", items: { type: "string" } },
-        address: { type: "string" },
+        city:     { type: "string", description: "Destination city" },
+        checkIn:  { type: "string", format: "date" },
+        checkOut: { type: "string", format: "date" },
+        guests:   { type: "integer", minimum: 1, maximum: 10, default: 2 },
       },
-      required: ["restaurant", "items", "address"],
+      required: ["city", "checkIn", "checkOut"],
     };
   }
 
-  async execute({ context, params }) {
-    context.goal = `Go to ${params.restaurant}'s website and add ${params.items.join(", ")} to cart. Deliver to ${params.address}. DO NOT complete payment — stop and require_human.`;
-    return { success: true };
+  plan(params?: Record<string, unknown>): SkillPlan {
+    const city = encodeURIComponent(String(params?.city));
+    const checkIn = String(params?.checkIn);
+    const checkOut = String(params?.checkOut);
+    const guests = Number(params?.guests ?? 2);
+
+    return {
+      startUrl:
+        `https://www.booking.com/searchresults.html` +
+        `?ss=${city}&checkin=${checkIn}&checkout=${checkOut}&group_adults=${guests}`,
+      goal: [
+        `You are on Booking.com results for ${city} (${checkIn} → ${checkOut}, ${guests} guests).`,
+        `The search is already configured — do NOT re-enter dates.`,
+        `Read the top 5 hotels: name, price/night, rating, and one highlight. Return via "complete".`,
+      ].join(" "),
+    };
   }
 }
 ```
 
-**Drop `PizzaDeliverySkill.ts` into `/skills/` → it appears in the dashboard instantly. No config needed.**
+**Drop `HotelSearchSkill.ts` into `/skills/` → it appears in the dashboard instantly with a form. No frontend work. No config.**
+
+> 💡 **The trick**: build a deep-link URL with every param pre-filled, land the agent on a results page, and let it focus on what vision LLMs do best — reading structured information off a screen.
 
 ---
 
@@ -235,22 +258,22 @@ skywalker/
 
 ## 🌟 Most Wanted Skills
 
-These are the community skills we'd love to see built. Each is a great **good first issue**:
+These are community skills we'd love to see built. Each is a great **good first issue**. For most of them, the only real work is finding the right deep-link URL shape:
 
-| Skill | Difficulty | Description |
+| Skill | Difficulty | Hint |
 |---|---|---|
-| 🍕 `pizza-delivery` | Easy | Order from Domino's / Pizza Hut |
-| 💼 `job-applier` | Medium | Auto-apply to LinkedIn Easy Apply jobs |
-| 🏨 `hotel-search` | Easy | Find best hotel prices on Booking.com |
-| 📊 `market-research` | Medium | Scrape G2/Capterra for competitor analysis |
-| 🐦 `x-poster` | Easy | Post a thread on X (Twitter) |
-| 🎵 `spotify-queue` | Easy | Add songs to your Spotify queue |
-| 📰 `news-brief` | Easy | Morning briefing from multiple news sources |
-| 🚗 `rideshare` | Hard | Book an Uber with HITL confirmation |
-| 🛒 `amazon-checkout` | Hard | Purchase with PaymentGate safety |
-| 📧 `email-triage` | Medium | Categorize and draft replies to emails |
+| 🏨 `hotel-search` | Easy | `booking.com/searchresults.html?ss=<city>&checkin=<date>&checkout=<date>` |
+| 📰 `news-digest` | Easy | `news.google.com/search?q=<topics>` |
+| 📊 `product-research` | Easy | `amazon.com/s?k=<query>` — extract top 5 with prices |
+| 🐦 `x-search` | Easy | `x.com/search?q=<query>&f=live` — cookie-gated, needs session sharing |
+| 📅 `calendar-check` | Medium | Works on your Chrome profile via `BROWSER_USER_DATA_DIR` |
+| 🐙 `github-trending` | Easy | `github.com/trending?since=daily&language=<lang>` |
+| 🛒 `amazon-checkout` | Hard | Uses PaymentGate + `require_human` — safety pattern reference |
+| 📧 `email-triage` | Medium | Works on Gmail with user-data-dir session |
+| 🎵 `spotify-queue` | Medium | Web player + session sharing |
+| 🚗 `rideshare` | Hard | Uber/Lyft with HITL confirmation on pickup |
 
-**→ [See all open issues](https://github.com/skywalker-agent/skywalker/issues?q=label%3A%22good+first+issue%22)**
+**→ [See all open issues](https://github.com/iamedobor/skywalker-agent/issues?q=label%3A%22good+first+issue%22)**
 
 ---
 
@@ -262,11 +285,13 @@ The quickest contribution is building a **Skill** — one file, no internals kno
 
 ```bash
 # 1. Fork + clone
-# 2. Copy the template
+# 2. Copy a reference skill (pick the closest domain)
 cp packages/agent/src/skills/examples/ResearchSkill.ts skills/MyAwesomeSkill.ts
-# 3. Edit it, run pnpm dev, test it
-# 4. Open a PR
+# 3. Edit metadata + paramsSchema() + plan(). Run pnpm dev. Test it end-to-end.
+# 4. Open a PR — include a screenshot of it running in the dashboard
 ```
+
+**What makes a PR merge fast**: deep-link URL that pre-fills the search, JSON Schema with sensible defaults, and a trace file attached to the PR description showing it worked.
 
 Also see: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [SECURITY.md](SECURITY.md)
 

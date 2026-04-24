@@ -144,59 +144,104 @@ The agent emits typed events (`AgentEventType` in `types.ts`) for every phase. T
 
 ## Building a Skill
 
-Skills are the easiest way to contribute. A skill is a TypeScript class that extends `BaseSkill`. Drop it in `/skills/` and it auto-loads.
+Skills are the fastest way to contribute. A skill is a TypeScript class that extends `BaseSkill`, implements `plan()`, and drops into `/skills/` — the registry auto-loads it on next restart and the dashboard renders its params as a form.
+
+### The `plan()` contract
+
+Every skill returns a `SkillPlan`:
+
+```typescript
+interface SkillPlan {
+  goal: string;        // Natural-language instructions for the See-Think-Do loop
+  startUrl?: string;   // Deep-link URL that bypasses brittle form-filling
+}
+```
+
+**The superpower: URL shortcuts.** Most website automation fails because agents fight with date pickers, autocomplete dropdowns, and Shadow-DOM inputs. Skip the fight. Build a deep-link URL with the query pre-filled and hand the agent a results page it only has to *read* from.
+
+| Site | Shortcut |
+|---|---|
+| Google Flights | `google.com/travel/flights?q=Flights%20from%20NYC%20to%20London%20on%202026-05-01` |
+| Google Search | `google.com/search?q=<encoded>` |
+| LinkedIn people | `linkedin.com/search/results/people/?keywords=<encoded>` |
+| Amazon search | `amazon.com/s?k=<encoded>` |
+| YouTube | `youtube.com/results?search_query=<encoded>` |
+
+If the site has a URL that accepts query params, use it.
 
 ### Minimal example
 
 ```typescript
 // skills/NewsDigestSkill.ts
-import { BaseSkill } from "@skywalker/agent/src/skills/BaseSkill.js";
-import type { SkillExecuteOptions } from "@skywalker/agent/src/types.js";
+import { BaseSkill, type SkillPlan } from "@skywalker/agent/src/skills/BaseSkill.js";
 
 export class NewsDigestSkill extends BaseSkill {
-  metadata = {
+  readonly metadata = {
     name: "news-digest",
-    description: "Get a morning briefing from top news sources",
+    description: "Morning briefing from top news sources",
     version: "1.0.0",
+    author: "Your Name",
     icon: "📰",
-    category: "research",
+    category: "productivity",
     triggers: ["morning news", "news digest", "top stories"],
   };
 
-  paramsSchema() {
+  paramsSchema(): Record<string, unknown> {
     return {
-      type: "object" as const,
+      type: "object",
       properties: {
         topics: {
           type: "string",
           description: "Comma-separated topics (e.g. 'tech, finance')",
+          default: "technology, finance, world",
         },
       },
+      required: ["topics"],
     };
   }
 
-  async execute({ context, params }: SkillExecuteOptions) {
-    const topics = (params?.topics as string) ?? "technology, finance, world";
-    context.goal = `Search for the latest news on: ${topics}. For each topic, find 2-3 headlines and key facts. Summarize everything in a morning briefing format. Use complete when done.`;
-    return { success: true };
+  validate(params?: Record<string, unknown>): string | null {
+    if (!params?.topics) return "topics is required";
+    return null;
+  }
+
+  plan(params?: Record<string, unknown>): SkillPlan {
+    const topics = String(params?.topics);
+    return {
+      startUrl: `https://news.google.com/search?q=${encodeURIComponent(topics)}`,
+      goal: [
+        `You are on Google News showing results for: ${topics}.`,
+        `For each topic, extract 2–3 headlines with a one-line summary and source.`,
+        `Dismiss any consent banner first. Return the briefing via the "complete" action.`,
+      ].join(" "),
+    };
   }
 }
 ```
 
+### Enum-per-task pattern (advanced)
+
+When a skill has branches that need different URLs or instructions, switch on a `task` enum. See [`LinkedInSkill.ts`](packages/agent/src/skills/examples/LinkedInSkill.ts) for a full reference — one skill covers search, connection requests, post extraction, and company lookups.
+
 ### Skill requirements checklist
 
-- [ ] Extends `BaseSkill` from the correct path
+- [ ] Extends `BaseSkill` and implements `plan(params): SkillPlan`
 - [ ] Unique `metadata.name` in kebab-case
-- [ ] At least 2 `metadata.triggers` (natural language phrases)
-- [ ] `metadata.icon` (emoji), `metadata.category`, `metadata.version`
-- [ ] `paramsSchema()` defined if skill takes parameters
-- [ ] `validate()` overridden if params are required
-- [ ] Any action that posts, purchases, or modifies data must include `require_human` in the goal string
-- [ ] Tested end-to-end with `pnpm dev`
+- [ ] At least 2 `metadata.triggers` (natural-language phrases)
+- [ ] `metadata.icon` (emoji), `metadata.category`, `metadata.version`, `metadata.author`
+- [ ] `paramsSchema()` defined as JSON Schema (subset: `string`, `integer`, `number`, `enum`, `format: date`)
+- [ ] `validate()` overridden if any params are required
+- [ ] `startUrl` is a pre-filled deep-link whenever possible — avoid landing on a generic home page
+- [ ] Any action that posts, purchases, or modifies data includes `require_human` in the goal string (see `LinkedInSkill.ts` → `send-connections`)
+- [ ] Tested end-to-end with `pnpm dev` on a real browser session
 
 ### Available skill categories
 
 `research` · `productivity` · `ecommerce` · `social` · `travel` · `finance` · `food` · `entertainment` · `utility`
+
+### How skills reach the dashboard
+
+`SkillRegistry` scans `/skills/` at server boot, reads each class's `metadata` and `paramsSchema()`, and exposes them at `GET /api/skills`. The dashboard's `SkillParamsModal` renders the schema into a form, so there is **zero frontend work** to add a skill.
 
 ---
 
@@ -279,17 +324,18 @@ There are no automated tests yet (this is a great place to contribute). For now,
 
 ### Manual test checklist
 
-Run `pnpm dev` and verify these scenarios:
+Run `pnpm dev` and verify these scenarios from the dashboard:
 
-| Test | Goal string to use |
+| Test | Skill / Goal |
 |---|---|
-| Basic web search | `"What is the current price of Bitcoin on CoinGecko"` |
-| Form interaction | `"Search for flights from New York to London next Friday on Google Flights"` |
-| Multi-step task | `"Find the top 3 trending repos on GitHub today"` |
-| Error recovery | Navigate to a 404 page, see if it backtracks |
-| Payment gate | Use a goal that leads to a checkout page |
+| Bulletproof deep-link | `flight-search` with `NYC → London`, depart next Friday |
+| Free-form research | `research` with topic `"LLM evaluation benchmarks 2026"` |
+| Authenticated session | `linkedin` → `search-profiles` with query `"AI researchers at Anthropic"` (requires `BROWSER_USER_DATA_DIR`) |
+| Freestyle goal | Type a raw goal in the command bar (no skill) — agent should still handle it |
+| Error recovery | Navigate to a 404, see if it backtracks |
+| Payment gate | Drive any skill toward a checkout page — agent must `require_human` |
 
-**Check the trace file** in `./traces/` — each step should have a screenshot, thought, and action logged correctly.
+**Check the trace file** in `./traces/` — each step should have a screenshot, thought, and action logged correctly. Trace files are the most valuable artifact to attach to a bug report.
 
 ### Build check
 

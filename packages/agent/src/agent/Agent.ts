@@ -135,6 +135,12 @@ export class Agent extends EventEmitter {
     let lastUrl = "";
     let staleStepCount = 0;
     let consentAttempts = 0;
+    // Count consecutive DOM-changing actions that didn't advance the URL.
+    // Distinct from staleStepCount, which needs an empty a11y tree to fire —
+    // this catches the "rich page but clicks aren't progressing" trap
+    // (e.g., clicking Continue on a fare-selection page 10× in a row).
+    let urlUnchangedActions = 0;
+    const recentActionFingerprints: string[] = [];
 
     for (let step = 1; step <= this.config.maxSteps; step++) {
       if (this.abortController?.signal.aborted) {
@@ -270,6 +276,28 @@ export class Agent extends EventEmitter {
         `[Step ${step}/${this.config.maxSteps}] ${llmResponse.action.type} — ${llmResponse.observation}`
       );
 
+      // ── Loop detection ───────────────────────────────────────────────────────
+      // If the LLM keeps emitting the same action 4+ times in a row without
+      // progress, the current approach is not working — inject a pointed error
+      // that forces it to switch strategies. Without this the agent can burn
+      // the entire step budget repeating a click that never lands.
+      const action = llmResponse.action;
+      const fingerprint = this.actionFingerprint(action);
+      recentActionFingerprints.push(fingerprint);
+      if (recentActionFingerprints.length > 6) recentActionFingerprints.shift();
+
+      const repeatCount = recentActionFingerprints.filter((f) => f === fingerprint).length;
+      if (repeatCount >= 4 && action.type !== "complete" && action.type !== "require_human") {
+        logger.warn(`[Loop] Action "${fingerprint}" repeated ${repeatCount}× — forcing strategy change`);
+        lastError =
+          `You have tried this same action ${repeatCount} times in a row without progress. The current approach is NOT working — the click is likely not landing on the intended target, or the page is re-rendering on each interaction. ` +
+          `STOP repeating it. Try one of these alternatives: ` +
+          `(1) If targeting a combobox/autocomplete suggestion, use key_press "ArrowDown" then key_press "Enter" instead of click_text. ` +
+          `(2) If the dialog keeps closing, the click is landing on a wrapper — try click_text with more specific/exact text, or use click with coordinates. ` +
+          `(3) If truly stuck, emit a backtrack action with a reason.`;
+        recentActionFingerprints.length = 0; // reset so the warning isn't repeated every step
+      }
+
       // ── Handle terminal actions ───────────────────────────────────────────────
       if (llmResponse.action.type === "complete") {
         const agentStep: AgentStep = {
@@ -363,6 +391,29 @@ export class Agent extends EventEmitter {
         consecutiveErrors = 0;
       }
 
+      // Track whether the URL advanced after this action. Clicks/typing on a
+      // page that doesn't change the URL for 6+ actions is a strong signal we
+      // are stuck in a no-op loop (e.g., fare-selection "Continue" that keeps
+      // re-opening the same overlay). Nudge the agent out of it.
+      const urlAfterAction = await this.browser.currentUrl();
+      const progresses = ["click", "click_text", "type", "key_press", "navigate", "triple_click"];
+      if (progresses.includes(llmResponse.action.type)) {
+        if (urlAfterAction === url) {
+          urlUnchangedActions++;
+        } else {
+          urlUnchangedActions = 0;
+        }
+        if (urlUnchangedActions >= 6) {
+          logger.warn(`[Loop] ${urlUnchangedActions} actions with no URL change — forcing strategy change`);
+          lastError =
+            `You have performed ${urlUnchangedActions} actions on this page with no URL change — clicks are not advancing the flow. ` +
+            `This usually means: (a) the page uses a modal/overlay you're clicking inside of, or (b) the target requires a specific sequence (e.g. scroll into view first). ` +
+            `Try: scrolling to reveal more options, pressing Escape to close any overlay, or emitting "complete" if the goal can already be answered from what you've read. ` +
+            `If the goal is a booking/checkout and you've already identified the cheapest option — STOP clicking and call "complete" with that result. Never click "Book" or "Continue" past a fare-selection screen without require_human approval.`;
+          urlUnchangedActions = 0;
+        }
+      }
+
       const agentStep: AgentStep = {
         stepNumber: step,
         timestamp: new Date().toISOString(),
@@ -381,6 +432,26 @@ export class Agent extends EventEmitter {
     }
 
     return `Reached maximum steps (${this.config.maxSteps}) without completing the goal.`;
+  }
+
+  /**
+   * Build a stable fingerprint for an action so we can detect the LLM looping
+   * on the same target. Uses action type + the most discriminating field
+   * (text for click_text/type, key for key_press, url for navigate, etc).
+   */
+  private actionFingerprint(action: import("../types.js").AgentAction): string {
+    switch (action.type) {
+      case "click_text": return `click_text:${action.text.slice(0, 40).toLowerCase()}`;
+      case "click":      return `click:${action.elementId ?? action.coordinates?.x + "," + action.coordinates?.y}`;
+      case "type":       return `type:${action.text.slice(0, 40).toLowerCase()}`;
+      case "key_press":  return `key_press:${action.key.toLowerCase()}`;
+      case "navigate":   return `navigate:${action.url}`;
+      case "select":     return `select:${action.elementId}:${action.value}`;
+      case "scroll":     return `scroll:${action.direction}`;
+      case "hover":      return `hover:${action.elementId ?? action.coordinates?.x + "," + action.coordinates?.y}`;
+      case "triple_click": return `triple_click:${action.elementId ?? "focused"}`;
+      default:           return action.type;
+    }
   }
 
   private createContext(sessionId: string, goal: string): AgentContext {

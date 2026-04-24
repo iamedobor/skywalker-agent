@@ -43,8 +43,11 @@ export function createAgentRouter(io: SocketServer, registry: SkillRegistry): Ro
     const llm = createLLMProvider(config.llmProvider, config.llmModel);
     const agent = new Agent(config, llm);
 
-    // If a skill is specified, let it configure the goal
+    // If a skill is specified, let it build the plan — the skill's plan() method
+    // converts params into a goal string and an optional startUrl. URL shortcuts
+    // (e.g. Google Flights deep links) skip brittle form-filling entirely.
     let finalGoal = goal ?? "";
+    let finalStartUrl = startUrl;
     if (skillName) {
       const skill = registry.get(skillName);
       if (!skill) {
@@ -56,6 +59,10 @@ export function createAgentRouter(io: SocketServer, registry: SkillRegistry): Ro
         res.status(400).json({ error: validationError });
         return;
       }
+      const plan = skill.plan(params);
+      finalGoal = plan.goal;
+      finalStartUrl = plan.startUrl ?? finalStartUrl;
+      logger.info(`[Skill] ${skillName} → ${plan.startUrl ?? "(no startUrl)"}`);
     }
 
     // Set up listener BEFORE calling run() to avoid race condition
@@ -72,7 +79,7 @@ export function createAgentRouter(io: SocketServer, registry: SkillRegistry): Ro
     // Start agent run (non-blocking)
     const sessionPromise = agent.run({
       goal: finalGoal,
-      startUrl,
+      startUrl: finalStartUrl,
       skillName,
       params,
     });

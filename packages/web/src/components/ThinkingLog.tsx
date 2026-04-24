@@ -81,11 +81,23 @@ const ENTRY_CONFIG = {
 };
 
 export function ThinkingLog({ entries, goal, status }: ThinkingLogProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
 
+  // Only auto-scroll when the user is already near the bottom. If they've
+  // scrolled up to read an earlier entry, don't yank them back down.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [entries]);
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [entries, status]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  };
 
   return (
     <div className="flex flex-col h-full glass-panel overflow-hidden">
@@ -123,7 +135,11 @@ export function ThinkingLog({ entries, goal, status }: ThinkingLogProps) {
       )}
 
       {/* Log entries */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-1.5 font-mono">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-3 space-y-1.5 font-mono"
+      >
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <Terminal className="w-10 h-10 text-slate-700" />
@@ -149,8 +165,6 @@ export function ThinkingLog({ entries, goal, status }: ThinkingLogProps) {
             <span>Processing...</span>
           </div>
         )}
-
-        <div ref={bottomRef} />
       </div>
     </div>
   );

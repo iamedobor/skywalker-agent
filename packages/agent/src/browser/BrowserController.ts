@@ -4,6 +4,7 @@ import {
   webkit,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from "playwright";
 import type { AgentConfig, AgentAction, ActionResult } from "../types.js";
@@ -124,8 +125,10 @@ export class BrowserController {
 
           if (action.clearFirst) {
             // Use keyboard select-all + delete so sites like Google Flights still receive
-            // proper input events (fill() bypasses them and breaks autocomplete)
-            await page.keyboard.press("Control+A");
+            // proper input events (fill() bypasses them and breaks autocomplete).
+            // ControlOrMeta maps to Cmd on macOS and Ctrl on Windows/Linux — a plain
+            // Control+A silently fails on macOS web apps, causing text to accumulate.
+            await page.keyboard.press("ControlOrMeta+a");
             await page.waitForTimeout(50);
             await page.keyboard.press("Backspace");
             await page.waitForTimeout(100);
@@ -179,19 +182,54 @@ export class BrowserController {
         case "click_text": {
           const t = action.text;
           const exact = action.exact ?? false;
-          // Try role-based locators first (pierce Shadow DOM, match by accessible name)
-          // "option" covers autocomplete dropdown items (Google Flights, etc.)
-          const clicked =
-            await page.getByRole("option",   { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByRole("button",   { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByRole("combobox", { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByRole("link",     { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByRole("tab",      { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByRole("menuitem", { name: t, exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByLabel(t, { exact }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
-            await page.getByText(t, { exact }).first().click({ timeout: 4000 }).then(() => true).catch(() => false) ||
-            await page.locator(`text=${t}`).first().click({ timeout: 2000 }).then(() => true).catch(() => false);
-          void clicked;
+
+          // If an autocomplete/listbox is currently open, scope clicks to it so
+          // we don't leak onto the combobox itself (which just re-toggles the
+          // dropdown without selecting) or onto headers/labels with matching text.
+          const listbox = page.locator('[role="listbox"]:visible, [role="dialog"] [role="listbox"]').first();
+          const hasOpenListbox = await listbox.count().then((n) => n > 0).catch(() => false);
+
+          const tryClick = (locator: Locator): Promise<boolean> =>
+            // Playwright's click() auto-waits for visibility/stability; we use
+            // .first() because some sites leave hidden duplicates in the DOM.
+            locator.first().click({ timeout: 2000 }).then(() => true).catch(() => false);
+
+          // Order matters: most specific (option inside open listbox) first,
+          // falling back to plain text matching as a last resort.
+          const attempts: Array<[string, () => Promise<boolean>]> = [];
+
+          if (hasOpenListbox) {
+            attempts.push(["listbox option", () => tryClick(listbox.getByRole("option", { name: t, exact }))]);
+            attempts.push(["listbox text",   () => tryClick(listbox.getByText(t, { exact }))]);
+          }
+
+          attempts.push(
+            ["option",   () => tryClick(page.getByRole("option",   { name: t, exact }))],
+            ["button",   () => tryClick(page.getByRole("button",   { name: t, exact }))],
+            ["link",     () => tryClick(page.getByRole("link",     { name: t, exact }))],
+            ["tab",      () => tryClick(page.getByRole("tab",      { name: t, exact }))],
+            ["menuitem", () => tryClick(page.getByRole("menuitem", { name: t, exact }))],
+            // Combobox comes AFTER link/tab because a populated combobox often
+            // has the entered value as its accessible name — clicking it would
+            // just re-toggle the field, not select a suggestion.
+            ["combobox", () => tryClick(page.getByRole("combobox", { name: t, exact }))],
+            ["label",    () => tryClick(page.getByLabel(t, { exact }))],
+            ["text",     () => tryClick(page.getByText(t, { exact }))],
+            ["raw text", () => tryClick(page.locator(`text=${t}`))]
+          );
+
+          let matched: string | null = null;
+          for (const [label, fn] of attempts) {
+            if (await fn()) { matched = label; break; }
+          }
+
+          if (!matched) {
+            return {
+              success: false,
+              error: `No clickable element matched "${t}". The text may not be interactive, the dialog may have closed, or the page is still loading. For autocomplete suggestions, try: type the query, then key_press "ArrowDown", then key_press "Enter".`,
+            };
+          }
+
           await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
           break;
         }
@@ -203,28 +241,30 @@ export class BrowserController {
             const el = page.locator(`[data-sw-id="${action.elementId}"]`).first();
             await el.click({ clickCount: 3 }).catch(async () => {
               // data-sw-id not in DOM — select-all on the currently focused element
-              await page.keyboard.press("Meta+A").catch(() => {});
-              await page.keyboard.press("Control+A").catch(() => {});
+              await page.keyboard.press("ControlOrMeta+a").catch(() => {});
             });
           } else {
             // No target — select all text in whatever is focused
-            await page.keyboard.press("Meta+A").catch(() => {});
-            await page.keyboard.press("Control+A").catch(() => {});
+            await page.keyboard.press("ControlOrMeta+a").catch(() => {});
           }
           await page.waitForTimeout(100);
           break;
         }
 
         case "key_press": {
+          // Select-all/copy/paste shortcuts use ControlOrMeta so they work on both
+          // Windows/Linux (Ctrl) and macOS (Cmd). A bare Control+A silently fails
+          // on macOS web apps.
           const KEY_MAP: Record<string, string> = {
             ctrl: "Control", cmd: "Meta", alt: "Alt", shift: "Shift",
             enter: "Enter", tab: "Tab", escape: "Escape", esc: "Escape",
             backspace: "Backspace", delete: "Delete", space: "Space",
             arrowdown: "ArrowDown", arrowup: "ArrowUp",
             arrowleft: "ArrowLeft", arrowright: "ArrowRight",
-            "ctrl+a": "Control+A", "ctrl+c": "Control+C",
-            "ctrl+v": "Control+V", "ctrl+x": "Control+X",
-            "meta+a": "Meta+A",
+            "ctrl+a": "ControlOrMeta+a", "ctrl+c": "ControlOrMeta+c",
+            "ctrl+v": "ControlOrMeta+v", "ctrl+x": "ControlOrMeta+x",
+            "meta+a": "ControlOrMeta+a", "cmd+a": "ControlOrMeta+a",
+            "controlormeta+a": "ControlOrMeta+a",
           };
           const normalized = KEY_MAP[action.key.toLowerCase()] ?? action.key;
           await page.keyboard.press(normalized);

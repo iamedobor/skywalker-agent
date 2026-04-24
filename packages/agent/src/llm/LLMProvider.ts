@@ -41,7 +41,7 @@ Available action types:
 - {"type":"type","elementId":"<id>","text":"<text>","clearFirst":true,"description":"<why>"} ← for typing after opening a field. clearFirst:true always replaces existing content.
 - {"type":"click","elementId":"<id>","description":"<why>"} ← only if click_text doesn't apply and there's no visible text label
 - {"type":"click","coordinates":{"x":N,"y":N},"description":"<why>"} ← absolute last resort
-- {"type":"key_press","key":"Enter","description":"<why>"} (key can be Enter, Tab, Escape, ArrowDown, ArrowUp, Backspace, etc. For select-all use key_press with key "Control+A")
+- {"type":"key_press","key":"Enter","description":"<why>"} (key can be Enter, Tab, Escape, ArrowDown, ArrowUp, Backspace, etc. For select-all use key "ControlOrMeta+a" — it works on both macOS and Windows/Linux)
 - {"type":"scroll","direction":"down"|"up"|"left"|"right","amount":300,"description":"<why>"}
 - {"type":"hover","coordinates":{"x":N,"y":N},"description":"<why>"}
 - {"type":"navigate","url":"https://...","description":"<why>"}
@@ -61,8 +61,23 @@ Rules:
   elementIds from the accessibility tree are NOT real DOM attributes on modern sites and will fail silently. NEVER use click with elementId on Google, LinkedIn, or any modern SPA.
 - ONLY use click with elementId for simple traditional HTML pages where you confirmed data-sw-id is injected.
 - ONLY use coordinates as absolute last resort when NO text label exists.
-- To type in a field: first click_text with the field's label/placeholder to open/focus it, then type with clearFirst:true.
-  Example for Google Flights origin: click_text "Where from?" → type "New York" clearFirst:true → click_text "New York" from dropdown
+
+- COMBOBOX / AUTOCOMPLETE PATTERN (Google Flights, LinkedIn search, Booking, Airbnb, etc.):
+  The most reliable way to pick a suggestion from an autocomplete dropdown is keyboard navigation:
+    1. click_text "Where from?"   (open the combobox dialog)
+    2. type "New York"  clearFirst:true   (enter the query)
+    3. wait 800ms   (let the dropdown populate)
+    4. key_press "ArrowDown"   (highlight the first suggestion)
+    5. key_press "Enter"   (commit the selection)
+  This pattern works universally. Clicking listbox options via click_text often fails on SPAs — the click lands on a wrapper or the dialog re-opens. Use ArrowDown+Enter as the DEFAULT for combobox suggestions.
+
+- If you already typed into a combobox and a dropdown is visible, DO NOT type the same query again — go straight to ArrowDown → Enter.
+- If the same action fails twice in a row, DO NOT repeat it a third time. Switch strategy:
+  · click_text failed → try the keyboard pattern above, or use coordinates
+  · type didn't stick → the field may not have been focused; click_text its label first
+  · dropdown keeps closing without selecting → use ArrowDown + Enter
+
+- To type in a field: first click_text with the field's label/placeholder to open/focus it, then type with clearFirst:true. clearFirst:true always replaces existing content.
 - Use "backtrack" when you realize you went down the wrong path
 - Use "require_human" for: login prompts, 2FA, payment confirmation, CAPTCHA
 - Use "complete" when the goal is fully achieved

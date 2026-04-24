@@ -6,7 +6,6 @@ import {
   Zap,
   Layers,
   History,
-  Settings,
   Plus,
   ChevronRight,
   Square,
@@ -20,6 +19,7 @@ import { BrowserPreview } from "@/components/BrowserPreview";
 import { ThinkingLog } from "@/components/ThinkingLog";
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { SkillGrid } from "@/components/SkillCard";
+import { SkillParamsModal } from "@/components/SkillParamsModal";
 import { StatusBar } from "@/components/StatusBar";
 import { useAgent } from "@/hooks/useAgent";
 import { useSocket } from "@/hooks/useSocket";
@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [traces, setTraces] = useState<TraceInfo[]>([]);
   const [commandOpen, setCommandOpen] = useState(true);
+  const [activeSkill, setActiveSkill] = useState<SkillInfo | null>(null);
 
   useEffect(() => {
     fetchSkills()
@@ -54,11 +55,19 @@ export default function DashboardPage() {
     [run]
   );
 
-  const handleSkillSelect = useCallback(
-    (skill: SkillInfo) => {
-      handleGoal(`Use the ${skill.name} skill: ${skill.triggers[0] ?? skill.description}`);
+  const handleSkillSelect = useCallback((skill: SkillInfo) => {
+    setActiveSkill(skill);
+  }, []);
+
+  const handleSkillRun = useCallback(
+    async (skillName: string, params: Record<string, unknown>) => {
+      setActiveSkill(null);
+      setCommandOpen(false);
+      // goal is a placeholder; the server replaces it with the skill's plan().goal.
+      // Kept non-empty so the backend's "goal or skillName required" check passes.
+      await run(`[skill:${skillName}]`, { skillName, params });
     },
-    [handleGoal]
+    [run]
   );
 
   const handleStop = useCallback(async () => {
@@ -167,6 +176,7 @@ export default function DashboardPage() {
               <CommandBar
                 open={commandOpen}
                 onSubmit={handleGoal}
+                onRunSkill={handleSkillRun}
                 onClose={() => setCommandOpen(false)}
                 isRunning={state.status === "running"}
               />
@@ -368,6 +378,13 @@ export default function DashboardPage() {
         approval={state.pendingApproval}
         onApprove={(input) => approve(true, input)}
         onReject={() => approve(false)}
+      />
+
+      {/* ── Skill params modal ───────────────────────────────────────────────── */}
+      <SkillParamsModal
+        skill={activeSkill}
+        onClose={() => setActiveSkill(null)}
+        onRun={handleSkillRun}
       />
     </div>
   );

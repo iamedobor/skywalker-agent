@@ -2,14 +2,16 @@ import type { Page } from "playwright";
 import type { HumanApprovalRequest, AgentEventType } from "../types.js";
 import { logger } from "../utils/logger.js";
 
-// Only trigger on buttons that are part of an actual checkout flow
+// Button text that strongly indicates an active checkout flow
 const PAYMENT_TRIGGER_PATTERNS = [
   /\bpay\s+now\b/i,
   /\bcomplete\s+(purchase|order|booking)\b/i,
-  /\bconfirm\s+(payment|order)\b/i,
+  /\bconfirm\s+(payment|order|and\s+pay)\b/i,
   /\bsubmit\s+payment\b/i,
   /\bplace\s+order\b/i,
   /\bproceed\s+to\s+payment\b/i,
+  /\bcontinue\s+to\s+payment\b/i,
+  /\bbook\s+(now|flight|and\s+pay)\b/i,
 ];
 
 const SENSITIVE_FIELD_PATTERNS = [
@@ -18,6 +20,32 @@ const SENSITIVE_FIELD_PATTERNS = [
   /expir(y|ation)/i,
   /billing\s+address/i,
   /payment\s+method/i,
+];
+
+// URL fragments that indicate we're past the browsing phase and inside a
+// booking/checkout flow. Pairing these with a "Continue/Review/Book" button
+// is enough to gate — we don't need to wait for the CVV field.
+const CHECKOUT_URL_PATTERNS = [
+  /\/checkout(\/|\?|$)/i,
+  /\/booking(\/|\?|$)/i,
+  /\/book(\/|\?|$)/i,
+  /\/payment(\/|\?|$)/i,
+  /\/order(\/|\?|$)/i,
+  /\/reserve(\/|\?|$)/i,
+  /google\.com\/travel\/flights\/booking/i,
+  /flights\/.*\/book/i,
+  /amazon\.[a-z.]+\/gp\/buy/i,
+  /stripe\.com\/.*checkout/i,
+];
+
+// Soft-commit button text — not enough on its own, but combined with a
+// checkout-URL it's a reliable gate.
+const SOFT_COMMIT_PATTERNS = [
+  /\bcontinue\b/i,
+  /\breview\b/i,
+  /\bproceed\b/i,
+  /\bconfirm\b/i,
+  /\bbook\b/i,
 ];
 
 export type PaymentGateEventEmitter = (
@@ -103,13 +131,20 @@ export class PaymentGate {
   }
 
   private async detectPaymentContext(page: Page): Promise<boolean> {
+    const url = page.url();
+    const isCheckoutUrl = CHECKOUT_URL_PATTERNS.some((p) => p.test(url));
+
     return page.evaluate(
       ({
         paymentPatterns,
         sensitivePatterns,
+        softCommitPatterns,
+        checkoutUrl,
       }: {
         paymentPatterns: string[];
         sensitivePatterns: string[];
+        softCommitPatterns: string[];
+        checkoutUrl: boolean;
       }) => {
         const buttons = Array.from(
           document.querySelectorAll("button, input[type=submit], a")
@@ -122,21 +157,29 @@ export class PaymentGate {
           .map((i) => `${i.getAttribute("placeholder") ?? ""} ${i.textContent ?? ""}`)
           .join(" ");
 
-        const allText = `${buttonText} ${inputText}`;
-
         const hasPayButton = paymentPatterns.some((p) =>
           new RegExp(p, "i").test(buttonText)
         );
         const hasSensitiveFields = sensitivePatterns.some((p) =>
           new RegExp(p, "i").test(inputText)
         );
+        const hasSoftCommit = softCommitPatterns.some((p) =>
+          new RegExp(p, "i").test(buttonText)
+        );
 
-        // Require BOTH a payment button AND sensitive fields to avoid false positives
-        return hasPayButton && hasSensitiveFields;
+        // Strong trigger: explicit pay button + sensitive card fields
+        if (hasPayButton && hasSensitiveFields) return true;
+        // Strong trigger: the URL is clearly a checkout/booking flow and
+        // there's any commit-ish button visible. Catches fare-selection pages
+        // BEFORE the card form is reached.
+        if (checkoutUrl && (hasPayButton || hasSoftCommit)) return true;
+        return false;
       },
       {
         paymentPatterns: PAYMENT_TRIGGER_PATTERNS.map((r) => r.source),
         sensitivePatterns: SENSITIVE_FIELD_PATTERNS.map((r) => r.source),
+        softCommitPatterns: SOFT_COMMIT_PATTERNS.map((r) => r.source),
+        checkoutUrl: isCheckoutUrl,
       }
     );
   }

@@ -17,7 +17,6 @@ function extractFirstJson(text: string): string | null {
   }
   return null;
 }
-import { z } from "zod";
 import { LLMProvider, type LLMInput } from "./LLMProvider.js";
 import { LLMResponseSchema, type LLMResponse } from "../types.js";
 import { logger } from "../utils/logger.js";
@@ -82,10 +81,10 @@ export class AnthropicProvider extends LLMProvider {
       const parsed = JSON.parse(cleaned) as unknown;
       const normalized = this.normalizeAction(parsed);
       return LLMResponseSchema.parse(normalized);
-    } catch (e) {
-      logger.warn(`LLM response parse failed, attempting repair: ${String(e)}`);
-
-      // Extract the first complete JSON object using brace matching
+    } catch (firstErr) {
+      // Claude occasionally emits trailing text after the JSON. Extract the first
+      // complete JSON object by brace-matching and retry silently — only warn if
+      // the repair itself fails.
       const firstJson = extractFirstJson(cleaned);
       if (firstJson) {
         try {
@@ -93,10 +92,11 @@ export class AnthropicProvider extends LLMProvider {
           const normalized = this.normalizeAction(parsed);
           return LLMResponseSchema.parse(normalized);
         } catch {
-          // fall through
+          // fall through to error fallback
         }
       }
 
+      logger.warn(`LLM response parse failed: ${String(firstErr)}`);
       return {
         thought: "Failed to parse LLM response. Backing off.",
         observation: "Parse error",
@@ -118,10 +118,10 @@ export class AnthropicProvider extends LLMProvider {
     const action = obj.action as Record<string, unknown>;
     const type = action.type as string | undefined;
 
-    // Remap action types the LLM commonly invents
+    // Remap action types the LLM commonly invents. triple_click is a real action
+    // type (see types.ts) so it intentionally passes through without remapping.
     const typeMap: Record<string, () => Record<string, unknown>> = {
       clear: () => ({ type: "type", text: "", clearFirst: true, description: action.description ?? "Clear field" }),
-      triple_click: () => ({ type: "triple_click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Triple click to select all" }),
       double_click: () => ({ type: "triple_click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Double click" }),
       focus: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Focus element" }),
       press: () => ({ type: "key_press", key: (action.key ?? action.value ?? "Enter") as string, description: action.description ?? "Press key" }),

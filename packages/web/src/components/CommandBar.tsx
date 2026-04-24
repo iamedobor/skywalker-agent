@@ -5,22 +5,63 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Zap, Globe, BookOpen, Plane, Briefcase, Search, ArrowRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const EXAMPLE_GOALS = [
-  { icon: <Plane className="w-4 h-4" />, text: "Find the cheapest flight from NYC to London next Friday" },
-  { icon: <Search className="w-4 h-4" />, text: "Research the latest AI safety papers on arxiv" },
-  { icon: <Briefcase className="w-4 h-4" />, text: "Find senior engineers at Stripe on LinkedIn" },
-  { icon: <Globe className="w-4 h-4" />, text: "What's the current Bitcoin price and 24h change?" },
-  { icon: <BookOpen className="w-4 h-4" />, text: "Summarize today's top stories on Hacker News" },
-];
+function nextFriday(): string {
+  const d = new Date();
+  const days = (5 - d.getDay() + 7) % 7 || 7;
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+interface ExampleGoal {
+  icon: React.ReactNode;
+  text: string;
+  skill?: { name: string; params: Record<string, unknown> };
+}
+
+// Pre-canned demos. The three skill-backed ones use deep-link URL shortcuts
+// (~1 step). The two free-form ones are pure-vision reads (Bitcoin, HN) —
+// exactly the shape vision LLMs excel at.
+function buildExamples(): ExampleGoal[] {
+  return [
+    {
+      icon: <Plane className="w-4 h-4" />,
+      text: "Find the cheapest flight from NYC to London next Friday",
+      skill: {
+        name: "flight-search",
+        params: { origin: "NYC", destination: "London", departDate: nextFriday(), adults: 1 },
+      },
+    },
+    {
+      icon: <Search className="w-4 h-4" />,
+      text: "Research the latest AI safety papers on arxiv",
+      skill: {
+        name: "research",
+        params: { topic: "latest AI safety papers on arxiv 2026", depth: "standard" },
+      },
+    },
+    {
+      icon: <Briefcase className="w-4 h-4" />,
+      text: "Find senior engineers at Stripe on LinkedIn",
+      skill: {
+        name: "linkedin",
+        params: { task: "search-profiles", query: "senior engineers at Stripe", maxResults: 10 },
+      },
+    },
+    { icon: <Globe className="w-4 h-4" />, text: "What's the current Bitcoin price and 24h change?" },
+    { icon: <BookOpen className="w-4 h-4" />, text: "Summarize today's top stories on Hacker News" },
+  ];
+}
 
 interface CommandBarProps {
   onSubmit: (goal: string) => void;
+  onRunSkill?: (skillName: string, params: Record<string, unknown>) => void;
   onClose?: () => void;
   isRunning?: boolean;
   open: boolean;
 }
 
-export function CommandBar({ onSubmit, onClose, isRunning, open }: CommandBarProps) {
+export function CommandBar({ onSubmit, onRunSkill, onClose, isRunning, open }: CommandBarProps) {
+  const examples = buildExamples();
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -138,10 +179,16 @@ export function CommandBar({ onSubmit, onClose, isRunning, open }: CommandBarPro
             animate={{ opacity: 1, y: 0 }}
             className="mt-2 flex flex-col gap-0.5"
           >
-            {EXAMPLE_GOALS.map((eg, i) => (
+            {examples.map((eg, i) => (
               <button
                 key={i}
-                onClick={() => handleSubmit(eg.text)}
+                onClick={() => {
+                  if (eg.skill && onRunSkill) {
+                    onRunSkill(eg.skill.name, eg.skill.params);
+                  } else {
+                    handleSubmit(eg.text);
+                  }
+                }}
                 className={cn(
                   "flex items-center gap-3 px-4 py-2.5 rounded-lg text-left",
                   "text-xs text-slate-500 hover:text-slate-300",
@@ -152,7 +199,12 @@ export function CommandBar({ onSubmit, onClose, isRunning, open }: CommandBarPro
                 <span className="text-slate-600 group-hover:text-neon-cyan transition-colors">
                   {eg.icon}
                 </span>
-                <span className="font-mono">{eg.text}</span>
+                <span className="font-mono flex-1">{eg.text}</span>
+                {eg.skill && (
+                  <span className="text-[9px] font-mono text-neon-cyan/70 border border-neon-cyan/30 px-1.5 py-0.5 rounded">
+                    {eg.skill.name}
+                  </span>
+                )}
               </button>
             ))}
           </motion.div>

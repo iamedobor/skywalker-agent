@@ -268,3 +268,8 @@ export interface SkillExecuteOptions {
   context: AgentContext;
   params?: Record<string, unknown>;
 }
+
+export interface SkillInvocation {
+  skillName: string;
+  params?: Record<string, unknown>;
+}
