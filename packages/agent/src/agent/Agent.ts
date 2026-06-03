@@ -15,6 +15,14 @@ import type {
 } from "../types.js";
 import { logger } from "../utils/logger.js";
 
+const MAX_PREVIOUS_THOUGHTS = 10;
+const MAX_STEP_HISTORY = 50;
+const CONSENT_MAX_ATTEMPTS = 4;
+const STALE_PAGE_LIMIT = 4;
+const LOOP_REPEAT_LIMIT = 4;
+const LOOP_WINDOW = 6;
+const URL_UNCHANGED_LIMIT = 6;
+
 export interface AgentRunOptions {
   goal: string;
   startUrl?: string;
@@ -163,7 +171,7 @@ export class Agent extends EventEmitter {
         consentAttempts++;
         logger.info(`[Auto] Consent page detected — attempt ${consentAttempts}`);
 
-        if (consentAttempts <= 4) {
+        if (consentAttempts <= CONSENT_MAX_ATTEMPTS) {
           // Use JS evaluation to click button by inner text — works regardless of Shadow DOM or locale
           await page.evaluate(() => {
             const btns = Array.from(document.querySelectorAll("button, [role='button']")) as HTMLElement[];
@@ -175,12 +183,17 @@ export class Agent extends EventEmitter {
           }).catch(() => {});
           await page.waitForTimeout(2000);
         } else {
-          // Tried 4 times — force navigate past consent using the continue param
+          // Tried 4 times — force navigate past consent using the continue param.
+          // Validate the redirect is a Google domain to prevent open-redirect abuse.
           const continueUrl = new URL(url).searchParams.get("continue") ?? "";
-          if (continueUrl) {
+          const GOOGLE_HOST = /^(www\.)?google\.(com|[a-z]{2,3}(\.[a-z]{2})?)$/;
+          const continueHost = continueUrl ? (() => { try { return new URL(continueUrl).hostname; } catch { return ""; } })() : "";
+          if (continueUrl && GOOGLE_HOST.test(continueHost)) {
             logger.warn(`[Auto] Consent not dismissing — force-navigating to: ${continueUrl}`);
             await page.goto(continueUrl, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
             await page.waitForTimeout(1500);
+          } else if (continueUrl) {
+            logger.warn(`[Auto] Consent continueUrl blocked (non-Google host): ${continueHost}`);
           }
           consentAttempts = 0;
         }
@@ -195,7 +208,7 @@ export class Agent extends EventEmitter {
       // Detect stale loop: same URL + empty tree for 4+ steps → force backtrack
       if (url === lastUrl && a11yTree.filter(n => n.role !== "document").length < 3) {
         staleStepCount++;
-        if (staleStepCount >= 4) {
+        if (staleStepCount >= STALE_PAGE_LIMIT) {
           staleStepCount = 0;
           lastError = "Stuck on this page for multiple steps with no interactive elements found. Try click_text, navigate to a different site, or use extract to read the page content.";
         }
@@ -261,6 +274,7 @@ export class Agent extends EventEmitter {
       });
 
       previousThoughts.push(llmResponse.thought);
+      if (previousThoughts.length > MAX_PREVIOUS_THOUGHTS) previousThoughts.shift();
       lastError = undefined;
 
       this.emit_event("agent:thought", sessionId, {
@@ -284,10 +298,10 @@ export class Agent extends EventEmitter {
       const action = llmResponse.action;
       const fingerprint = this.actionFingerprint(action);
       recentActionFingerprints.push(fingerprint);
-      if (recentActionFingerprints.length > 6) recentActionFingerprints.shift();
+      if (recentActionFingerprints.length > LOOP_WINDOW) recentActionFingerprints.shift();
 
       const repeatCount = recentActionFingerprints.filter((f) => f === fingerprint).length;
-      if (repeatCount >= 4 && action.type !== "complete" && action.type !== "require_human") {
+      if (repeatCount >= LOOP_REPEAT_LIMIT && action.type !== "complete" && action.type !== "require_human") {
         logger.warn(`[Loop] Action "${fingerprint}" repeated ${repeatCount}× — forcing strategy change`);
         lastError =
           `You have tried this same action ${repeatCount} times in a row without progress. The current approach is NOT working — the click is likely not landing on the intended target, or the page is re-rendering on each interaction. ` +
@@ -403,7 +417,7 @@ export class Agent extends EventEmitter {
         } else {
           urlUnchangedActions = 0;
         }
-        if (urlUnchangedActions >= 6) {
+        if (urlUnchangedActions >= URL_UNCHANGED_LIMIT) {
           logger.warn(`[Loop] ${urlUnchangedActions} actions with no URL change — forcing strategy change`);
           lastError =
             `You have performed ${urlUnchangedActions} actions on this page with no URL change — clicks are not advancing the flow. ` +
@@ -429,6 +443,7 @@ export class Agent extends EventEmitter {
 
       recorder.recordStep(agentStep);
       context.stepHistory.push(agentStep);
+      if (context.stepHistory.length > MAX_STEP_HISTORY) context.stepHistory.shift();
     }
 
     return `Reached maximum steps (${this.config.maxSteps}) without completing the goal.`;

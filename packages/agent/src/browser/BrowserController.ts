@@ -58,12 +58,12 @@ export class BrowserController {
   async screenshot(): Promise<string> {
     const page = this.getPage();
     try {
-      const buffer = await page.screenshot({ type: "jpeg", quality: 70, timeout: 10000 });
+      const buffer = await page.screenshot({ type: "jpeg", quality: 85, timeout: 10000 });
       return buffer.toString("base64");
     } catch {
       // Page may still be loading — wait briefly and retry once
       await page.waitForTimeout(1000);
-      const buffer = await page.screenshot({ type: "jpeg", quality: 70, timeout: 10000 });
+      const buffer = await page.screenshot({ type: "jpeg", quality: 85, timeout: 10000 });
       return buffer.toString("base64");
     }
   }
@@ -101,7 +101,9 @@ export class BrowserController {
                   await page.getByRole("button", { name: elName, exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
                   await page.getByLabel(elName, { exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false) ||
                   await page.getByText(elName, { exact: false }).first().click({ timeout: 2000 }).then(() => true).catch(() => false);
-                void fallback;
+                if (!fallback) {
+                  logger.warn(`[Click] All role/text fallbacks failed for "${action.description}"`);
+                }
               }
             }
           }

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
-let _idCounter = 0;
-const uid = (prefix: string) => `${prefix}-${++_idCounter}-${Date.now()}`;
+const uid = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 import { getSocket } from "@/lib/socket";
 import { startAgent, stopAgent, approveAction } from "@/lib/socket";
 
@@ -314,6 +313,20 @@ export function useAgent() {
       });
     };
 
+    const handleDisconnect = () => {
+      if (currentSessionRef.current) {
+        currentSessionRef.current = null;
+        dispatch({ type: "ERROR", error: "Lost connection to agent server. The task was interrupted." });
+      }
+    };
+
+    const handleConnectError = () => {
+      if (currentSessionRef.current) {
+        currentSessionRef.current = null;
+        dispatch({ type: "ERROR", error: "Could not connect to agent server." });
+      }
+    };
+
     socket.on("agent:start", handleStart);
     socket.on("agent:screenshot", handleScreenshot);
     socket.on("agent:action", handleAction);
@@ -323,6 +336,8 @@ export function useAgent() {
     socket.on("agent:backtrack", handleBacktrack);
     socket.on("agent:require_human", handleRequireHuman);
     socket.on("payment:gate_triggered", handlePaymentGate);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
 
     return () => {
       socket.off("agent:start", handleStart);
@@ -334,6 +349,8 @@ export function useAgent() {
       socket.off("agent:backtrack", handleBacktrack);
       socket.off("agent:require_human", handleRequireHuman);
       socket.off("payment:gate_triggered", handlePaymentGate);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
     };
   }, []);
 

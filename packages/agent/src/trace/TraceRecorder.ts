@@ -71,8 +71,13 @@ export class TraceRecorder {
   }
 
   static load(tracePath: string): AgentTrace {
-    const raw = readFileSync(tracePath, "utf-8");
-    return JSON.parse(raw) as AgentTrace;
+    try {
+      const raw = readFileSync(tracePath, "utf-8");
+      return JSON.parse(raw) as AgentTrace;
+    } catch (e) {
+      logger.warn(`Failed to load trace ${tracePath}: ${String(e)}`);
+      throw e;
+    }
   }
 
   static listTraces(traceDir = "./traces"): AgentTrace[] {
@@ -80,6 +85,12 @@ export class TraceRecorder {
     const { readdirSync } = require("fs") as typeof import("fs");
     return readdirSync(traceDir)
       .filter((f: string) => f.endsWith(".trace.json"))
-      .map((f: string) => TraceRecorder.load(join(traceDir, f)));
+      .flatMap((f: string) => {
+        try {
+          return [TraceRecorder.load(join(traceDir, f))];
+        } catch {
+          return [];
+        }
+      });
   }
 }

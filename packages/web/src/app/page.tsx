@@ -12,7 +12,7 @@ import {
   RotateCcw,
   BookOpen,
   Star,
-  Github,
+  GithubIcon,
 } from "lucide-react";
 import { CommandBar } from "@/components/CommandBar";
 import { BrowserPreview } from "@/components/BrowserPreview";
@@ -41,11 +41,11 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchSkills()
       .then(setSkills)
-      .catch(() => {});
+      .catch((err) => console.error("Failed to fetch skills:", err));
     fetchTraces()
       .then(setTraces)
-      .catch(() => {});
-  }, [state.status]);
+      .catch((err) => console.error("Failed to fetch traces:", err));
+  }, [state.status, connected]);
 
   const handleGoal = useCallback(
     async (goal: string, options?: { startUrl?: string }) => {
@@ -58,6 +58,11 @@ export default function DashboardPage() {
   const handleSkillSelect = useCallback((skill: SkillInfo) => {
     setActiveSkill(skill);
   }, []);
+
+  const handleOpenSkill = useCallback((skillName: string) => {
+    const skill = skills.find((s) => s.name === skillName);
+    if (skill) setActiveSkill(skill);
+  }, [skills]);
 
   const handleSkillRun = useCallback(
     async (skillName: string, params: Record<string, unknown>) => {
@@ -151,12 +156,12 @@ export default function DashboardPage() {
           </button>
 
           <a
-            href="https://github.com/skywalker-agent/skywalker"
+            href="https://github.com/iamedobor/skywalker-agent"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 border border-panel-border hover:border-neon-cyan/30 hover:text-neon-cyan transition-colors"
           >
-            <Github className="w-3.5 h-3.5" />
+            <GithubIcon className="w-3.5 h-3.5" />
             <span className="hidden sm:block">Star</span>
             <Star className="w-3 h-3 opacity-60" />
           </a>
@@ -177,6 +182,7 @@ export default function DashboardPage() {
                 open={commandOpen}
                 onSubmit={handleGoal}
                 onRunSkill={handleSkillRun}
+                onOpenSkill={handleOpenSkill}
                 onClose={() => setCommandOpen(false)}
                 isRunning={state.status === "running"}
               />
@@ -230,9 +236,11 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
                     <Layers className="w-8 h-8 text-slate-700" />
                     <p className="text-xs text-slate-600 font-mono">
-                      No skills loaded.
-                      <br />
-                      Start the agent server first.
+                      {connected ? (
+                        <>No skills loaded.<br />Check the agent server logs.</>
+                      ) : (
+                        <>Agent server not connected.<br />Run <code className="text-slate-400">pnpm dev</code> to start.</>
+                      )}
                     </p>
                   </div>
                 )}
@@ -247,7 +255,7 @@ export default function DashboardPage() {
                     auto-loads. 🚀
                   </p>
                   <a
-                    href="https://github.com/skywalker-agent/skywalker/blob/main/CONTRIBUTING.md"
+                    href="https://github.com/iamedobor/skywalker-agent/blob/main/CONTRIBUTING.md"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 mt-2 text-[10px] font-mono text-neon-cyan hover:underline"

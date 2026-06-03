@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import type { AccessibilityNode } from "../types.js";
 import { v4 as uuidv4 } from "uuid";
+import { logger } from "../utils/logger.js";
 
 /**
  * Capture accessibility tree using Playwright's ariaSnapshot (primary)
@@ -15,6 +16,9 @@ export async function captureAccessibilityTree(
     const yaml = await page.locator("body").ariaSnapshot({ timeout: 4000 });
     const nodes = parseAriaYaml(yaml);
     if (nodes.length >= 3) {
+      if (nodes.length > 100) {
+        logger.warn(`[A11y] Page has ${nodes.length} nodes — truncated to 100. ${nodes.length - 100} nodes hidden from LLM.`);
+      }
       const nodesWithIds = nodes.slice(0, 100).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
       // Inject data-sw-id into DOM so click-by-elementId works on non-Shadow DOM sites
       try {
@@ -110,11 +114,14 @@ export async function captureAccessibilityTree(
         });
       });
 
-      return results.slice(0, 100);
+      return results;
     });
 
+    if (nodes.length > 100) {
+      logger.warn(`[A11y] DOM fallback: ${nodes.length} nodes — truncated to 100.`);
+    }
     if (nodes.length > 0) {
-      return nodes.map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
+      return nodes.slice(0, 100).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
     }
   } catch {
     // fall through to text extraction

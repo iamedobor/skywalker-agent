@@ -37,11 +37,11 @@ export class AnthropicProvider extends LLMProvider {
   async think(input: LLMInput): Promise<LLMResponse> {
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.client.messages.create({
+    // Use the prompt-caching beta so cache_control is valid on TextBlockParam.
+    // Steps 2+ of a run hit the cached system prompt (~90% cheaper on input tokens).
+    const response = await this.client.beta.promptCaching.messages.create({
       model: this.model,
       max_tokens: 1024,
-      // Cache the system prompt — it's identical across all steps in a run,
-      // so steps 2+ get a cache hit (~90% cheaper on input tokens).
       system: [
         {
           type: "text",

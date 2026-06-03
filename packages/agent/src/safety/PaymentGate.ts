@@ -2,50 +2,39 @@ import type { Page } from "playwright";
 import type { HumanApprovalRequest, AgentEventType } from "../types.js";
 import { logger } from "../utils/logger.js";
 
-// Button text that strongly indicates an active checkout flow
+// Explicit payment action buttons — high confidence, low false-positive rate.
+// These only appear when the user is actively about to transfer money.
 const PAYMENT_TRIGGER_PATTERNS = [
   /\bpay\s+now\b/i,
   /\bcomplete\s+(purchase|order|booking)\b/i,
-  /\bconfirm\s+(payment|order|and\s+pay)\b/i,
+  /\bconfirm\s+(payment|and\s+pay)\b/i,
   /\bsubmit\s+payment\b/i,
   /\bplace\s+order\b/i,
-  /\bproceed\s+to\s+payment\b/i,
-  /\bcontinue\s+to\s+payment\b/i,
-  /\bbook\s+(now|flight|and\s+pay)\b/i,
+  /\bproceed\s+to\s+(payment|checkout)\b/i,
+  /\bcontinue\s+to\s+(payment|checkout)\b/i,
+  /\bbook\s+and\s+pay\b/i,
+  /\bpay\s+[\$£€₦]\s*[\d,]+/i,
 ];
 
+// Sensitive card/billing fields — presence means we're on a payment form.
 const SENSITIVE_FIELD_PATTERNS = [
   /cvv|cvc|security\s+code/i,
   /card\s+number/i,
   /expir(y|ation)/i,
-  /billing\s+address/i,
-  /payment\s+method/i,
+  /billing\s+(address|zip|postcode)/i,
 ];
 
-// URL fragments that indicate we're past the browsing phase and inside a
-// booking/checkout flow. Pairing these with a "Continue/Review/Book" button
-// is enough to gate — we don't need to wait for the CVV field.
-const CHECKOUT_URL_PATTERNS = [
-  /\/checkout(\/|\?|$)/i,
-  /\/booking(\/|\?|$)/i,
-  /\/book(\/|\?|$)/i,
-  /\/payment(\/|\?|$)/i,
-  /\/order(\/|\?|$)/i,
-  /\/reserve(\/|\?|$)/i,
-  /google\.com\/travel\/flights\/booking/i,
-  /flights\/.*\/book/i,
-  /amazon\.[a-z.]+\/gp\/buy/i,
-  /stripe\.com\/.*checkout/i,
-];
-
-// Soft-commit button text — not enough on its own, but combined with a
-// checkout-URL it's a reliable gate.
-const SOFT_COMMIT_PATTERNS = [
-  /\bcontinue\b/i,
-  /\breview\b/i,
-  /\bproceed\b/i,
-  /\bconfirm\b/i,
-  /\bbook\b/i,
+// Known payment provider iframe origins — if any are embedded the page is
+// definitely a payment form, even if the button text is ambiguous.
+const PAYMENT_IFRAME_ORIGINS = [
+  "js.stripe.com",
+  "checkout.stripe.com",
+  "www.paypal.com",
+  "checkout.paypal.com",
+  "js.braintreegateway.com",
+  "checkout.adyen.com",
+  "pay.google.com",
+  "apple.com/apple-pay",
 ];
 
 export type PaymentGateEventEmitter = (
@@ -68,7 +57,7 @@ export class PaymentGate {
 
     if (triggered) {
       const screenshot = await page
-        .screenshot({ type: "jpeg", quality: 70 })
+        .screenshot({ type: "jpeg", quality: 85 })
         .then((b) => b.toString("base64"));
 
       const title = await page.title();
@@ -131,56 +120,56 @@ export class PaymentGate {
   }
 
   private async detectPaymentContext(page: Page): Promise<boolean> {
-    const url = page.url();
-    const isCheckoutUrl = CHECKOUT_URL_PATTERNS.some((p) => p.test(url));
+    try {
+      // Check for embedded payment provider iframes — strongest possible signal.
+      // Stripe/PayPal iframes are only injected on actual payment forms.
+      const hasPaymentIframe = await page.evaluate((origins: string[]) => {
+        const frames = Array.from(document.querySelectorAll("iframe"));
+        return frames.some((f) => {
+          const src = f.src || f.getAttribute("src") || "";
+          return origins.some((o) => src.includes(o));
+        });
+      }, PAYMENT_IFRAME_ORIGINS).catch(() => false);
 
-    return page.evaluate(
-      ({
-        paymentPatterns,
-        sensitivePatterns,
-        softCommitPatterns,
-        checkoutUrl,
-      }: {
-        paymentPatterns: string[];
-        sensitivePatterns: string[];
-        softCommitPatterns: string[];
-        checkoutUrl: boolean;
-      }) => {
-        const buttons = Array.from(
-          document.querySelectorAll("button, input[type=submit], a")
-        );
-        const buttonText = buttons
-          .map((b) => b.textContent ?? "")
-          .join(" ");
-        const inputs = Array.from(document.querySelectorAll("input, label"));
-        const inputText = inputs
-          .map((i) => `${i.getAttribute("placeholder") ?? ""} ${i.textContent ?? ""}`)
-          .join(" ");
+      if (hasPaymentIframe) return true;
 
-        const hasPayButton = paymentPatterns.some((p) =>
-          new RegExp(p, "i").test(buttonText)
-        );
-        const hasSensitiveFields = sensitivePatterns.some((p) =>
-          new RegExp(p, "i").test(inputText)
-        );
-        const hasSoftCommit = softCommitPatterns.some((p) =>
-          new RegExp(p, "i").test(buttonText)
-        );
+      return await page.evaluate(
+        ({
+          paymentPatterns,
+          sensitivePatterns,
+        }: {
+          paymentPatterns: string[];
+          sensitivePatterns: string[];
+        }) => {
+          const buttons = Array.from(
+            document.querySelectorAll("button, input[type=submit], a[role=button]")
+          );
+          const buttonText = buttons.map((b) => b.textContent ?? "").join(" ");
 
-        // Strong trigger: explicit pay button + sensitive card fields
-        if (hasPayButton && hasSensitiveFields) return true;
-        // Strong trigger: the URL is clearly a checkout/booking flow and
-        // there's any commit-ish button visible. Catches fare-selection pages
-        // BEFORE the card form is reached.
-        if (checkoutUrl && (hasPayButton || hasSoftCommit)) return true;
-        return false;
-      },
-      {
-        paymentPatterns: PAYMENT_TRIGGER_PATTERNS.map((r) => r.source),
-        sensitivePatterns: SENSITIVE_FIELD_PATTERNS.map((r) => r.source),
-        softCommitPatterns: SOFT_COMMIT_PATTERNS.map((r) => r.source),
-        checkoutUrl: isCheckoutUrl,
-      }
-    );
+          const inputs = Array.from(document.querySelectorAll("input, label"));
+          const inputText = inputs
+            .map((i) => `${i.getAttribute("placeholder") ?? ""} ${i.textContent ?? ""}`)
+            .join(" ");
+
+          const hasPayButton = paymentPatterns.some((p) =>
+            new RegExp(p, "i").test(buttonText)
+          );
+          const hasSensitiveFields = sensitivePatterns.some((p) =>
+            new RegExp(p, "i").test(inputText)
+          );
+
+          // Require BOTH an explicit pay-action button AND a card/billing field.
+          // This eliminates false positives on results pages that have "Book"
+          // or "Continue" buttons but no payment form (e.g. Google Flights results).
+          return hasPayButton && hasSensitiveFields;
+        },
+        {
+          paymentPatterns: PAYMENT_TRIGGER_PATTERNS.map((r) => r.source),
+          sensitivePatterns: SENSITIVE_FIELD_PATTERNS.map((r) => r.source),
+        }
+      ).catch(() => false);
+    } catch {
+      return false;
+    }
   }
 }

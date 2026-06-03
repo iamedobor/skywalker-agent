@@ -55,12 +55,13 @@ function buildExamples(): ExampleGoal[] {
 interface CommandBarProps {
   onSubmit: (goal: string) => void;
   onRunSkill?: (skillName: string, params: Record<string, unknown>) => void;
+  onOpenSkill?: (skillName: string) => void;
   onClose?: () => void;
   isRunning?: boolean;
   open: boolean;
 }
 
-export function CommandBar({ onSubmit, onRunSkill, onClose, isRunning, open }: CommandBarProps) {
+export function CommandBar({ onSubmit, onRunSkill, onOpenSkill, onClose, isRunning, open }: CommandBarProps) {
   const examples = buildExamples();
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
@@ -133,6 +134,7 @@ export function CommandBar({ onSubmit, onRunSkill, onClose, isRunning, open }: C
               if (e.key === "Enter") handleSubmit(value);
             }}
             placeholder="Tell SkyWalker what to do... (e.g. 'Book a table for 2 in Soho')"
+            maxLength={2000}
             disabled={isRunning}
             className={cn(
               "flex-1 bg-transparent text-sm font-mono outline-none placeholder:text-slate-600",
@@ -183,7 +185,9 @@ export function CommandBar({ onSubmit, onRunSkill, onClose, isRunning, open }: C
               <button
                 key={i}
                 onClick={() => {
-                  if (eg.skill && onRunSkill) {
+                  if (eg.skill && onOpenSkill) {
+                    onOpenSkill(eg.skill.name);
+                  } else if (eg.skill && onRunSkill) {
                     onRunSkill(eg.skill.name, eg.skill.params);
                   } else {
                     handleSubmit(eg.text);
