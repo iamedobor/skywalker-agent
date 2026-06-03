@@ -139,6 +139,7 @@ export class Agent extends EventEmitter {
   ): Promise<string> {
     const previousThoughts: string[] = [];
     let consecutiveErrors = 0;
+    let consecutiveRequireHuman = 0;
     let lastError: string | undefined;
     let lastUrl = "";
     let staleStepCount = 0;
@@ -332,6 +333,18 @@ export class Agent extends EventEmitter {
       }
 
       if (llmResponse.action.type === "require_human") {
+        consecutiveRequireHuman++;
+
+        // If the agent keeps asking for human help without making progress,
+        // it's stuck — force a backtrack instead of spamming the user.
+        if (consecutiveRequireHuman >= 3) {
+          logger.warn(`[Loop] require_human fired ${consecutiveRequireHuman}× in a row — forcing backtrack`);
+          consecutiveRequireHuman = 0;
+          consecutiveErrors++;
+          lastError = `You have asked for human help ${consecutiveRequireHuman + 2} times in a row without progress. The element you need is not accessible via the current approach. Use "complete" to report what you found so far, or "backtrack" to return to the previous page and try a different route.`;
+          continue;
+        }
+
         const title = await page.title();
         recorder.pause();
 
@@ -352,6 +365,8 @@ export class Agent extends EventEmitter {
           return `Task paused: ${llmResponse.action.reason}`;
         }
 
+        consecutiveRequireHuman = 0;
+        consecutiveErrors = 0;
         recorder.resume();
         if (userInput) {
           context.customData["lastHumanInput"] = userInput;
@@ -403,6 +418,7 @@ export class Agent extends EventEmitter {
         consecutiveErrors++;
       } else {
         consecutiveErrors = 0;
+        consecutiveRequireHuman = 0;
       }
 
       // Track whether the URL advanced after this action. Clicks/typing on a

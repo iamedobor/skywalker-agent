@@ -83,7 +83,13 @@ Rules:
 - Use "complete" when the goal is fully achieved
 - NEVER navigate away from a page mid-task without completing the current sub-goal
 - If a consent/cookie dialog appears, dismiss it with click_text using the exact button text shown.
-- Output ONLY the JSON object. No markdown fences. No text before or after the JSON. No trailing commas.`;
+- Output ONLY the JSON object. No markdown fences. No text before or after the JSON. No trailing commas.
+
+RESULT FORMAT RULES (for the "complete" action's "result" field):
+- Plain text ONLY. No markdown: no **bold**, no *italic*, no - bullet points, no # headers.
+- Use plain newlines to separate items, not dashes or asterisks.
+- Good example: "Cheapest flight: United £677\nDeparture: 7:05 PM EWR\nArrival: 7:15 AM LHR\nDuration: 7h 10m nonstop"
+- Bad example: "**Cheapest flight:** United £677\n- Departure: 7:05 PM EWR\n- Arrival: 7:15 AM LHR"`;
   }
 
   protected buildUserPrompt(input: LLMInput): string {
@@ -97,7 +103,7 @@ Rules:
       : "";
 
     const treeStr = input.accessibilityNodes
-      .slice(0, 80)
+      .slice(0, 150)
       .map((n) => {
         let line = `[${n.id}] <${n.role}>`;
         if (n.name) line += ` "${n.name}"`;

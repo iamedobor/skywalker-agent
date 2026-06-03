@@ -423,7 +423,7 @@ function FollowUpBar({
     const truncatedResult = previousResult.length > 300
       ? previousResult.slice(0, 300) + "…"
       : previousResult;
-    const contextualGoal = `Previous task: "${previousGoal}"\nPrevious result: "${truncatedResult}"\n\nFollow-up task: ${text}`;
+    const contextualGoal = `Previous task: "${previousGoal}"\nPrevious result: "${truncatedResult}"\n\nFollow-up task: ${text}\n\nINSTRUCTION: If you are on a results page and cannot click individual items to proceed, use require_human to explain exactly what the user needs to do manually, then stop. Do not loop repeating the same failed clicks.`;
     // Resume from the same page so the agent doesn't re-search from scratch
     const startUrl = lastUrl && lastUrl !== "about:blank" ? lastUrl : undefined;
     onSubmit(contextualGoal, { startUrl });
