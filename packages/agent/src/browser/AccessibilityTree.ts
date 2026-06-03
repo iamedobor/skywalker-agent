@@ -16,10 +16,10 @@ export async function captureAccessibilityTree(
     const yaml = await page.locator("body").ariaSnapshot({ timeout: 4000 });
     const nodes = parseAriaYaml(yaml);
     if (nodes.length >= 3) {
-      if (nodes.length > 100) {
-        logger.warn(`[A11y] Page has ${nodes.length} nodes — truncated to 100. ${nodes.length - 100} nodes hidden from LLM.`);
+      if (nodes.length > 150) {
+        logger.warn(`[A11y] Page has ${nodes.length} nodes — truncated to 150. ${nodes.length - 150} nodes hidden from LLM.`);
       }
-      const nodesWithIds = nodes.slice(0, 100).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
+      const nodesWithIds = nodes.slice(0, 150).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
       // Inject data-sw-id into DOM so click-by-elementId works on non-Shadow DOM sites
       try {
         await page.evaluate((nodeData: Array<{id: string; role: string; name: string}>) => {
@@ -117,11 +117,11 @@ export async function captureAccessibilityTree(
       return results;
     });
 
-    if (nodes.length > 100) {
-      logger.warn(`[A11y] DOM fallback: ${nodes.length} nodes — truncated to 100.`);
+    if (nodes.length > 150) {
+      logger.warn(`[A11y] DOM fallback: ${nodes.length} nodes — truncated to 150.`);
     }
     if (nodes.length > 0) {
-      return nodes.slice(0, 100).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
+      return nodes.slice(0, 150).map((n) => ({ ...n, id: uuidv4().slice(0, 8) }));
     }
   } catch {
     // fall through to text extraction

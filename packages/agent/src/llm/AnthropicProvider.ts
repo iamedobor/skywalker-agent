@@ -41,7 +41,7 @@ export class AnthropicProvider extends LLMProvider {
     // Steps 2+ of a run hit the cached system prompt (~90% cheaper on input tokens).
     const response = await this.client.beta.promptCaching.messages.create({
       model: this.model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: [
         {
           type: "text",
