@@ -13,7 +13,7 @@ function buildAgentConfig(): AgentConfig {
   return {
     llmProvider: (process.env.LLM_PROVIDER as AgentConfig["llmProvider"]) ?? "anthropic",
     llmModel: process.env.LLM_MODEL ?? "claude-sonnet-4-6",
-    maxSteps: parseInt(process.env.MAX_STEPS ?? "50", 10),
+    maxSteps: parseInt(process.env.MAX_STEPS ?? "25", 10),
     timeoutMs: parseInt(process.env.AGENT_TIMEOUT_MS ?? "120000", 10),
     browserType:
       (process.env.BROWSER_TYPE as AgentConfig["browserType"]) ?? "chromium",
@@ -103,28 +103,34 @@ export function createAgentRouter(io: SocketServer, registry: SkillRegistry): Ro
 
   // ── POST /api/stop/:sessionId ──────────────────────────────────────────────
   router.post("/stop/:sessionId", (req: Request, res: Response) => {
-    const agent = activeSessions.get(req.params.sessionId!);
+    const { sessionId } = req.params;
+    const agent = activeSessions.get(sessionId);
     if (!agent) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
     agent.stop();
-    activeSessions.delete(req.params.sessionId!);
+    activeSessions.delete(sessionId);
     res.json({ status: "stopped" });
   });
 
   // ── POST /api/approve/:sessionId ──────────────────────────────────────────
   router.post("/approve/:sessionId", (req: Request, res: Response) => {
-    const agent = activeSessions.get(req.params.sessionId!);
+    const { sessionId } = req.params;
+    const agent = activeSessions.get(sessionId);
     if (!agent) {
       res.status(404).json({ error: "Session not found or not waiting for approval" });
       return;
     }
     const { approved, userInput } = req.body as {
-      approved: boolean;
+      approved?: unknown;
       userInput?: string;
     };
-    agent.resolveHumanApproval(req.params.sessionId!, approved, userInput);
+    if (typeof approved !== "boolean") {
+      res.status(400).json({ error: "approved must be a boolean" });
+      return;
+    }
+    agent.resolveHumanApproval(sessionId, approved, userInput);
     res.json({ status: approved ? "approved" : "rejected" });
   });
 

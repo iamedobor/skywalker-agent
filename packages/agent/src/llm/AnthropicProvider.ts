@@ -40,7 +40,15 @@ export class AnthropicProvider extends LLMProvider {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 1024,
-      system: this.buildSystemPrompt(),
+      // Cache the system prompt — it's identical across all steps in a run,
+      // so steps 2+ get a cache hit (~90% cheaper on input tokens).
+      system: [
+        {
+          type: "text",
+          text: this.buildSystemPrompt(),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [
         {
           role: "user",

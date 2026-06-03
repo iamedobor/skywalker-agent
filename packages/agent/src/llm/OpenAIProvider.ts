@@ -31,6 +31,8 @@ export class OpenAIProvider extends LLMProvider {
               type: "image_url",
               image_url: {
                 url: `data:image/jpeg;base64,${input.screenshotBase64}`,
+                // "high" (~765 tokens) is needed to read browser UI text reliably.
+                // Switch to "low" (85 tokens) only if cost matters more than accuracy.
                 detail: "high",
               },
             },
@@ -74,8 +76,7 @@ export class OpenAIProvider extends LLMProvider {
     const type = action.type as string | undefined;
     const typeMap: Record<string, () => Record<string, unknown>> = {
       clear: () => ({ type: "type", text: "", clearFirst: true, description: action.description ?? "Clear field" }),
-      triple_click: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Click" }),
-      double_click: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Click" }),
+      double_click: () => ({ type: "triple_click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Double click" }),
       focus: () => ({ type: "click", elementId: action.elementId, coordinates: action.coordinates, description: action.description ?? "Focus" }),
       press: () => ({ type: "key_press", key: (action.key ?? action.value ?? "Enter") as string, description: action.description ?? "Press key" }),
       press_key: () => ({ type: "key_press", key: (action.key ?? "Enter") as string, description: action.description ?? "Press key" }),

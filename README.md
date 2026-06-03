@@ -16,8 +16,7 @@
 
 <br/>
 
-<!-- Replace with your actual demo GIF -->
-![SkyWalker Demo](./docs/demo.gif)
+> 📸 **Demo coming soon** — screenshots and screen recording in progress.
 
 <br/>
 
