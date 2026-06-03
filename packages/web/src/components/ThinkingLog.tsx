@@ -11,6 +11,7 @@ import {
   User,
   Terminal,
   ChevronRight,
+  CornerDownRight,
 } from "lucide-react";
 import { cn, formatTimestamp } from "@/lib/utils";
 import type { ThinkingLogEntry } from "@/hooks/useAgent";
@@ -122,15 +123,34 @@ export function ThinkingLog({ entries, goal, status }: ThinkingLogProps) {
         </div>
       </div>
 
-      {/* Goal display */}
+      {/* Goal display — chat-style: previous task dimmed above, current goal prominent */}
       {goal && (
-        <div className="px-4 py-2 border-b border-panel-border bg-void-950/30">
-          <div className="flex items-start gap-2">
-            <ChevronRight className="w-3.5 h-3.5 text-neon-cyan mt-0.5 flex-shrink-0" />
-            <p className="text-xs font-mono text-slate-400 leading-relaxed">
-              <span className="text-neon-cyan">GOAL:</span> {goal}
-            </p>
-          </div>
+        <div className="px-4 py-2 border-b border-panel-border bg-void-950/30 space-y-1.5">
+          {goal.includes("Follow-up task:") ? (
+            <>
+              <div className="flex items-start gap-2 opacity-40">
+                <ChevronRight className="w-3 h-3 text-slate-500 mt-0.5 flex-shrink-0" />
+                <p className="text-[10px] font-mono text-slate-500 leading-relaxed line-clamp-1">
+                  {goal.match(/Previous task: "([^"]+)"/)?.[1] ?? ""}
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <CornerDownRight className="w-3.5 h-3.5 text-neon-cyan mt-0.5 flex-shrink-0" />
+                <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                  <span className="text-neon-cyan">FOLLOW-UP:</span>{" "}
+                  {goal.match(/Follow-up task: ([\s\S]+)$/)?.[1]?.trim() ?? goal}
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-3.5 h-3.5 text-neon-cyan mt-0.5 flex-shrink-0" />
+              <p className="text-xs font-mono text-slate-400 leading-relaxed line-clamp-2">
+                <span className="text-neon-cyan">GOAL:</span>{" "}
+                {goal.startsWith("[skill:") ? goal.slice(8, -1) : goal}
+              </p>
+            </div>
+          )}
         </div>
       )}
 

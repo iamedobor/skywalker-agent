@@ -316,7 +316,7 @@ export default function DashboardPage() {
                   <div className="w-2 h-2 rounded-full bg-neon-green mt-1.5 flex-shrink-0" />
                   <div className="flex-1">
                     <p className="text-xs font-mono text-neon-green mb-1">TASK COMPLETE</p>
-                    <p className="text-sm text-slate-300 leading-relaxed mb-3">
+                    <p className="text-sm text-slate-300 leading-relaxed mb-3 whitespace-pre-wrap">
                       {state.finalResult}
                     </p>
                     <FollowUpBar
@@ -412,15 +412,18 @@ function FollowUpBar({
   const [value, setValue] = useState("");
 
   const suggestions = [
-    "Book the cheapest option",
     "Find a faster alternative",
     "Show me business class options",
     "Try a different date",
+    "What's the cheapest one-way?",
   ];
 
   const submit = (text: string) => {
     if (!text.trim()) return;
-    const contextualGoal = `Previous task: "${previousGoal}"\nPrevious result: "${previousResult}"\n\nFollow-up task: ${text}`;
+    const truncatedResult = previousResult.length > 300
+      ? previousResult.slice(0, 300) + "…"
+      : previousResult;
+    const contextualGoal = `Previous task: "${previousGoal}"\nPrevious result: "${truncatedResult}"\n\nFollow-up task: ${text}`;
     // Resume from the same page so the agent doesn't re-search from scratch
     const startUrl = lastUrl && lastUrl !== "about:blank" ? lastUrl : undefined;
     onSubmit(contextualGoal, { startUrl });
