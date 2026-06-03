@@ -60,10 +60,13 @@ function schemaToFields(schema: Record<string, unknown> | null | undefined): Fie
 function smartDefault(field: Field, skillName: string): unknown {
   if (field.defaultValue !== undefined) return field.defaultValue;
   if (field.type === "date") {
-    // Next Friday — reliable fallback for flight/travel demos
     const d = new Date();
     const daysUntilFriday = (5 - d.getDay() + 7) % 7 || 7;
     d.setDate(d.getDate() + daysUntilFriday);
+    // Return date defaults to one week after departure so the form makes sense
+    if (field.name.toLowerCase().includes("return")) {
+      d.setDate(d.getDate() + 7);
+    }
     return d.toISOString().slice(0, 10);
   }
   if (field.type === "enum" && field.enumValues) return field.enumValues[0];
